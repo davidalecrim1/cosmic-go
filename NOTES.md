@@ -56,3 +56,19 @@ The domain is a fancy way of saying the problem you’re trying to solve.
 
 A model is a map of a process or phenomenon that captures a useful property. 
 ```
+
+## Domain Modeling
+```
+So it is in the mundane world of business. The terminology used by business stakeholders represents a distilled understanding of the domain model, where complex ideas and processes are boiled down to a single word or phrase.
+``` 
+
+DDD is a fancy word for requirements engineering in the software world. Undestand and detail the business, then go technical.
+
+```
+The name of our unit test describes the behavior that we want to see from the system, and the names of the classes and variables that we use are taken from the business jargon. We could show this code to our nontechnical coworkers, and they would agree that this correctly describes the behavior of the system.
+```
+
+I really like this, to sum up with **Clean Code**:
+- **Unit Test Name:** Business behaviour
+- **Classes:** Business jargon (nouns)
+- **Methods:** Business jargon (verbs)
