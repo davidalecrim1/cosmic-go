@@ -57,7 +57,7 @@ The domain is a fancy way of saying the problem you’re trying to solve.
 A model is a map of a process or phenomenon that captures a useful property. 
 ```
 
-## Domain Modeling
+## Chapter 01: Domain Modeling
 ```
 So it is in the mundane world of business. The terminology used by business stakeholders represents a distilled understanding of the domain model, where complex ideas and processes are boiled down to a single word or phrase.
 ``` 
@@ -78,3 +78,15 @@ This is the part of your code that is closest to the business, the most likely t
 ```
 
 I really can see this in the domain model I've crafted in Go. The book shows how to make it easy to be understood. All domain model should be like this.
+
+## Chapter 02: Repository Pattern
+
+The main value of repository pattern is to implement the dependency inversion principle decoupling our core logic from infrastructure concerns (database).
+
+```
+Is this ports and adapters? Or is it hexagonal architecture? Is that the same as onion architecture? What about the clean architecture? What’s a port, and what’s an adapter? Why do you people have so many words for the same thing?
+
+Although some people like to nitpick over the differences, all these are pretty much names for the same thing, and they all boil down to the dependency inversion principle: high-level modules (the domain) should not depend on low-level ones (the infrastructure).
+```
+
+This is a great quote.
