@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"sort"
 	"time"
 )
 
@@ -14,7 +15,7 @@ var (
 type Reference string
 
 type Product struct {
-	SKU string
+	SKU Reference
 }
 
 type OrderLine struct {
@@ -31,8 +32,8 @@ type Batch struct {
 	Reference         Reference
 	Product           Product
 	PurchasedQuantity int
-	Allocations       map[Reference]OrderLine
 	ETA               time.Time
+	allocations       map[Reference]OrderLine
 }
 
 func NewBatch(ref Reference, product Product, quantity int, eta time.Time) *Batch {
@@ -40,53 +41,60 @@ func NewBatch(ref Reference, product Product, quantity int, eta time.Time) *Batc
 		Reference:         ref,
 		Product:           product,
 		PurchasedQuantity: quantity,
-		Allocations:       make(map[Reference]OrderLine),
 		ETA:               eta,
+		allocations:       make(map[Reference]OrderLine),
 	}
 }
 
-func (sb *Batch) Allocate(o *Order) error {
-	total := 0
-	for _, line := range o.Lines {
-		if sb.Product.SKU != line.Product.SKU {
-			return ErrProductSkuMismatch
-		}
-		total += line.Quantity
+func NewBatchWithoutETA(ref Reference, product Product, quantity int) *Batch {
+	return &Batch{
+		Reference:         ref,
+		Product:           product,
+		PurchasedQuantity: quantity,
+		allocations:       make(map[Reference]OrderLine),
+	}
+}
+
+func (sb *Batch) Allocate(line *OrderLine) error {
+	if sb.Product.SKU != line.Product.SKU {
+		return ErrProductSkuMismatch
 	}
 
-	if sb.PurchasedQuantity < total {
+	if sb.AvailableQuantity() < line.Quantity {
 		return ErrOrderLinesOverBatch
 	}
 
-	for _, line := range o.Lines {
-		sb.Allocations[o.Reference] = line
-	}
-
+	sb.allocations[line.Product.SKU] = *line
 	return nil
 }
 
-func (sb *Batch) Deallocate(o *Order) error {
-	total := 0
-	for _, line := range o.Lines {
-		if sb.Product.SKU != line.Product.SKU {
-			return ErrCannotDeallocateUnallocatedOrderLine
-		}
-		total += line.Quantity
+func (sb *Batch) Deallocate(line *OrderLine) error {
+	if sb.Product.SKU != line.Product.SKU {
+		return ErrCannotDeallocateUnallocatedOrderLine
 	}
-	if sb.PurchasedQuantity < total {
+
+	if sb.AvailableQuantity() < line.Quantity {
 		return ErrOrderLinesOverBatch
 	}
 
-	delete(sb.Allocations, o.Reference)
+	delete(sb.allocations, line.Product.SKU)
 	return nil
 }
 
 func (sb *Batch) AvailableQuantity() int {
 	allocated := 0
-
-	for _, line := range sb.Allocations {
+	for _, line := range sb.allocations {
 		allocated += line.Quantity
 	}
 
 	return sb.PurchasedQuantity - allocated
+}
+
+func Allocate(ol *OrderLine, bt []Batch) (Reference, error) {
+	sortBasedOnEarliestETA := func(i, j int) bool {
+		return bt[i].ETA.Before(bt[j].ETA)
+	}
+
+	sort.Slice(bt, sortBasedOnEarliestETA)
+	return bt[0].Reference, bt[0].Allocate(ol)
 }

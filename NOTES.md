@@ -72,3 +72,9 @@ I really like this, to sum up with **Clean Code**:
 - **Unit Test Name:** Business behaviour
 - **Classes:** Business jargon (nouns)
 - **Methods:** Business jargon (verbs)
+
+```
+This is the part of your code that is closest to the business, the most likely to change, and the place where you deliver the most value to the business. Make it easy to understand and modify.
+```
+
+I really can see this in the domain model I've crafted in Go. The book shows how to make it easy to be understood. All domain model should be like this.
