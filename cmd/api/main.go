@@ -6,8 +6,9 @@ import (
 )
 
 var (
-	ErrOrderLinesOverBatch = errors.New("the order lines are over the available quantity in batch")
-	ErrProductSkuMismatch  = errors.New("product sku mismatch in batch")
+	ErrOrderLinesOverBatch                  = errors.New("the order lines are over the available quantity in batch")
+	ErrProductSkuMismatch                   = errors.New("product sku mismatch in batch")
+	ErrCannotDeallocateUnallocatedOrderLine = errors.New("cannot deallocate unallocated order line")
 )
 
 type Product struct {
@@ -33,11 +34,11 @@ type Batch struct {
 
 func (sb *Batch) Allocate(o *Order) error {
 	total := 0
-	for _, ol := range o.Lines {
-		if sb.Product.SKU != ol.Product.SKU {
+	for _, line := range o.Lines {
+		if sb.Product.SKU != line.Product.SKU {
 			return ErrProductSkuMismatch
 		}
-		total += ol.Quantity
+		total += line.Quantity
 	}
 
 	if sb.AvailableQuantity < total {
@@ -47,4 +48,19 @@ func (sb *Batch) Allocate(o *Order) error {
 	sb.AvailableQuantity -= total
 	return nil
 	// TODO: Validate multiple allocations from the same orderline
+}
+
+func (sb *Batch) Deallocate(o *Order) error {
+	total := 0
+	for _, line := range o.Lines {
+		if sb.Product.SKU != line.Product.SKU {
+			return ErrCannotDeallocateUnallocatedOrderLine
+		}
+		total += line.Quantity
+	}
+	if sb.AvailableQuantity < total {
+		return ErrOrderLinesOverBatch
+	}
+	sb.AvailableQuantity += total
+	return nil
 }

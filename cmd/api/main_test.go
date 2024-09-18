@@ -37,6 +37,15 @@ func TestDomain(t *testing.T) {
 			err := batch.Allocate(order)
 			assert.Error(t, err)
 		})
+
+	t.Run("can only deallocate allocated order lines",
+		func(t *testing.T) {
+			batch := &Batch{"batch-001", Product{"ELEC-TRUMPET"}, 10, time.Now()}
+			unallocatedOrder := &Order{"order-ref", []OrderLine{{Product{"SMALL-TABLE"}, 5}}}
+			err := batch.Deallocate(unallocatedOrder)
+			assert.Error(t, err)
+			assert.Equal(t, 10, batch.AvailableQuantity)
+		})
 }
 
 func createBatchAndOrder(t *testing.T, sku string, batchQty, orderQty int) (*Batch, *Order) {
