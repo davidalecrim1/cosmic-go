@@ -105,3 +105,16 @@ func cleanUpRepository(db *pgxpool.Pool) {
 		log.Fatalf("error cleaning up database: %v", err)
 	}
 }
+
+type FakeRepository struct {
+	batches map[string]*domain.Batch
+}
+
+func (r *FakeRepository) Add(batch *domain.Batch) error {
+	r.batches[string(batch.Reference)] = batch
+	return nil
+}
+
+func (r *FakeRepository) Get(reference string) (*domain.Batch, error) {
+	return r.batches[reference], nil
+}

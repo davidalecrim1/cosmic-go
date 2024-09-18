@@ -102,3 +102,8 @@ func Allocate(ol *OrderLine, bt []Batch) (Reference, error) {
 	sort.Slice(bt, sortBasedOnEarliestETA)
 	return bt[0].Reference, bt[0].Allocate(ol)
 }
+
+type Repository interface {
+	SaveBatch(batch *Batch) error
+	GetBatch(ref Reference) (*Batch, error)
+}

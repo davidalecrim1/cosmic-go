@@ -90,3 +90,9 @@ Although some people like to nitpick over the differences, all these are pretty 
 ```
 
 This is a great quote.
+
+```
+Building fakes for your abstractions is an excellent way to get design feedback: if it’s hard to fake, the abstraction is probably too complicated.
+```
+
+Nice quote. I agree with this.
