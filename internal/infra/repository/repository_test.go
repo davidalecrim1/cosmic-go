@@ -70,6 +70,8 @@ func TestRepository(t *testing.T) {
 
 			_, err = repo.Get("batch-001")
 			assert.NoError(t, err)
+
+			cleanUpRepository(db)
 		})
 }
 
