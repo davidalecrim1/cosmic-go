@@ -56,6 +56,10 @@ func NewBatchWithoutETA(ref Reference, product Product, quantity int) *Batch {
 }
 
 func (sb *Batch) Allocate(line *OrderLine) error {
+	if sb.allocations == nil {
+		sb.allocations = make(map[Reference]OrderLine)
+	}
+
 	if sb.Product.SKU != line.Product.SKU {
 		return ErrProductSkuMismatch
 	}
