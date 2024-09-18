@@ -11,6 +11,8 @@ var (
 	ErrCannotDeallocateUnallocatedOrderLine = errors.New("cannot deallocate unallocated order line")
 )
 
+type Reference string
+
 type Product struct {
 	SKU string
 }
@@ -21,15 +23,26 @@ type OrderLine struct {
 }
 
 type Order struct {
-	Reference string
+	Reference Reference
 	Lines     []OrderLine
 }
 
 type Batch struct {
-	Reference         string
+	Reference         Reference
 	Product           Product
-	AvailableQuantity int
+	PurchasedQuantity int
+	Allocations       map[Reference]OrderLine
 	ETA               time.Time
+}
+
+func NewBatch(ref Reference, product Product, quantity int, eta time.Time) *Batch {
+	return &Batch{
+		Reference:         ref,
+		Product:           product,
+		PurchasedQuantity: quantity,
+		Allocations:       make(map[Reference]OrderLine),
+		ETA:               eta,
+	}
 }
 
 func (sb *Batch) Allocate(o *Order) error {
@@ -41,13 +54,15 @@ func (sb *Batch) Allocate(o *Order) error {
 		total += line.Quantity
 	}
 
-	if sb.AvailableQuantity < total {
+	if sb.PurchasedQuantity < total {
 		return ErrOrderLinesOverBatch
 	}
 
-	sb.AvailableQuantity -= total
+	for _, line := range o.Lines {
+		sb.Allocations[o.Reference] = line
+	}
+
 	return nil
-	// TODO: Validate multiple allocations from the same orderline
 }
 
 func (sb *Batch) Deallocate(o *Order) error {
@@ -58,9 +73,20 @@ func (sb *Batch) Deallocate(o *Order) error {
 		}
 		total += line.Quantity
 	}
-	if sb.AvailableQuantity < total {
+	if sb.PurchasedQuantity < total {
 		return ErrOrderLinesOverBatch
 	}
-	sb.AvailableQuantity += total
+
+	delete(sb.Allocations, o.Reference)
 	return nil
+}
+
+func (sb *Batch) AvailableQuantity() int {
+	allocated := 0
+
+	for _, line := range sb.Allocations {
+		allocated += line.Quantity
+	}
+
+	return sb.PurchasedQuantity - allocated
 }

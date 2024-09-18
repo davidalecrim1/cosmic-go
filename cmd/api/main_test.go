@@ -12,7 +12,7 @@ func TestDomain(t *testing.T) {
 		func(t *testing.T) {
 			batch, order := createBatchAndOrder(t, "SMALL-TABLE", 20, 2)
 			batch.Allocate(order)
-			assert.Equal(t, 18, batch.AvailableQuantity)
+			assert.Equal(t, 18, batch.AvailableQuantity())
 		})
 
 	t.Run("can allocate if available greater than required",
@@ -27,12 +27,12 @@ func TestDomain(t *testing.T) {
 			smallBatch, largeOrder := createBatchAndOrder(t, "ELEC-TRUMPET", 10, 10)
 			err := smallBatch.Allocate(largeOrder)
 			assert.NoError(t, err)
-			assert.Equal(t, 0, smallBatch.AvailableQuantity)
+			assert.Equal(t, 0, smallBatch.AvailableQuantity())
 		})
 
 	t.Run("cannot allocate if skus do not match",
 		func(t *testing.T) {
-			batch := &Batch{"batch-001", Product{"ELEC-TRUMPET"}, 10, time.Now()}
+			batch := NewBatch("batch-001", Product{"ELEC-TRUMPET"}, 10, time.Now())
 			order := &Order{"order-ref", []OrderLine{{Product{"SMALL-TABLE"}, 10}}}
 			err := batch.Allocate(order)
 			assert.Error(t, err)
@@ -40,18 +40,30 @@ func TestDomain(t *testing.T) {
 
 	t.Run("can only deallocate allocated order lines",
 		func(t *testing.T) {
-			batch := &Batch{"batch-001", Product{"ELEC-TRUMPET"}, 10, time.Now()}
+			batch := NewBatch("batch-001", Product{"ELEC-TRUMPET"}, 10, time.Now())
 			unallocatedOrder := &Order{"order-ref", []OrderLine{{Product{"SMALL-TABLE"}, 5}}}
 			err := batch.Deallocate(unallocatedOrder)
 			assert.Error(t, err)
-			assert.Equal(t, 10, batch.AvailableQuantity)
+			assert.Equal(t, 10, batch.AvailableQuantity())
+		})
+
+	t.Run("allocation is idempotent",
+		func(t *testing.T) {
+			batch, order := createBatchAndOrder(t, "ELEC-TRUMPET", 10, 2)
+
+			err := batch.Allocate(order)
+			assert.NoError(t, err)
+			err = batch.Allocate(order)
+			assert.NoError(t, err)
+
+			assert.Equal(t, 8, batch.AvailableQuantity())
 		})
 }
 
 func createBatchAndOrder(t *testing.T, sku string, batchQty, orderQty int) (*Batch, *Order) {
 	t.Helper()
-	batch := Batch{"batch-001", Product{sku}, batchQty, time.Now()}
+	batch := NewBatch("batch-001", Product{sku}, batchQty, time.Now())
 	line := OrderLine{Product{sku}, orderQty}
 	order := Order{"order-ref", []OrderLine{line}}
-	return &batch, &order
+	return batch, &order
 }
