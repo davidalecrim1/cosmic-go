@@ -96,3 +96,47 @@ Building fakes for your abstractions is an excellent way to get design feedback:
 ```
 
 Nice quote. I agree with this.
+
+```
+If your app is just a simple CRUD (create-read-update-delete) wrapper around a database, then you don’t need a domain model or a repository.
+```
+
+DDD is not a silver bullet. Know when to use the ORM in the domain layer and ship your application fast.
+
+## Chapter 03: Interlude on Coupling and Abstractions
+
+```
+When we’re unable to change component A for fear of breaking component B, we say that the components have become coupled
+```
+
+```
+This is the problem with the Ball of Mud pattern: as the application grows, if we’re unable to prevent coupling between elements that have no cohesion, that coupling increases superlinearly until we are no longer able to effectively change our systems.
+```
+
+What I really like about this quote is that tests well the developers understand if they are turning the system into a Ball of Mud, because if it is getting harder to test, or worse, not new tests for new features, means the system is going downwards.
+
+```
+When we have to tackle a problem from first principles, we usually try to write a simple implementation and then refactor toward better design. We’ll use this approach throughout the book, because it’s how we write code in the real world: start with a solution to the smallest part of the problem, and then iteratively make the solution richer and better designed.
+```
+
+Don't be afraid to write bad code, just write it, then stare at it and refactor until you are satisfied.
+
+
+```
+Instead, we like to clearly identify the responsibilities in our codebase, and to separate those responsibilities into small, focused objects that are easy to replace with a test double.
+```
+
+Also a lesson, prefer to create your own fakes then mocking without dependency injection.
+
+```
+Designing for testability really means designing for extensibility. We trade off a little more complexity for a cleaner design that admits novel use cases.
+```
+
+I do believe is a tradeoff worth most of the times.
+
+### Mocks versus Fakes
+- **Mocks** are used to verify how something gets used; they have methods like `assert_called_once_with()`
+- **Fakes** are working implementations of the thing they’re replacing, but they’re designed for use only in tests. They wouldn’t work "in real life"; our in-memory repository is a good example. 
+
+**Wrap Up**
+- Separate the what from the how
