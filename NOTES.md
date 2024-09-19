@@ -134,9 +134,87 @@ Designing for testability really means designing for extensibility. We trade off
 
 I do believe is a tradeoff worth most of the times.
 
+
 ### Mocks versus Fakes
 - **Mocks** are used to verify how something gets used; they have methods like `assert_called_once_with()`
 - **Fakes** are working implementations of the thing they’re replacing, but they’re designed for use only in tests. They wouldn’t work "in real life"; our in-memory repository is a good example. 
 
 **Wrap Up**
 - Separate the what from the how
+
+
+### Deep Dive on Mocks, Fakes, Spies and Stubs
+
+#### 1. **Mocks**:
+   - **Definition**: Mocks are objects that are used to **verify behavior**. They allow you to check whether certain methods were called with specific arguments during the test. 
+   - **Purpose**: Mocks are primarily used for **interaction-based testing**, where the focus is on the interactions between objects rather than the outcome of a function.
+   - **How They Work**: Mocks typically record information about how they were called, such as what methods were invoked and with what parameters. After the test, you can assert that the correct methods were called the correct number of times.
+   - **Example Use**: When testing whether a service calls an external API with the expected arguments.
+   
+   ```python
+   mock_api = Mock()
+   service.do_something()
+   mock_api.call.assert_called_once_with(expected_argument)
+   ```
+
+#### 2. **Stubs**:
+   - **Definition**: Stubs are objects that provide **predefined responses** to calls during a test. Unlike mocks, they do not track interactions; they only supply the necessary return values to keep the test going.
+   - **Purpose**: Stubs are used for **state-based testing** where the goal is to test the state of the system after the method has run, without focusing on interactions between objects.
+   - **How They Work**: Stubs simply return hardcoded values when their methods are called.
+   - **Example Use**: When testing a service that depends on a third-party API, a stub can return the expected API response without making an actual network call.
+   
+   ```python
+   def api_stub():
+       return {"data": "expected_response"}
+   
+   result = service.process(api_stub())
+   assert result == expected_outcome
+   ```
+
+#### 3. **Fakes**:
+   - **Definition**: Fakes are fully functioning implementations, but they are **simpler** or **in-memory versions** of a real system component. They usually have no external dependencies.
+   - **Purpose**: Fakes are useful when you need more realistic behavior than what stubs provide but still want to avoid using real dependencies like a database or an external service.
+   - **How They Work**: Fakes are often used to simulate real-world services or components, like an in-memory database or a simplified version of an API.
+   - **Example Use**: You might use an in-memory database as a fake when testing repository logic, instead of connecting to a real database.
+   
+   ```python
+   class InMemoryRepository:
+       def __init__(self):
+           self.data = []
+       
+       def save(self, item):
+           self.data.append(item)
+   
+   fake_repo = InMemoryRepository()
+   service.save_item(item, fake_repo)
+   assert item in fake_repo.data
+   ```
+
+#### 4. **Spies**:
+   - **Definition**: Spies are similar to mocks but are more focused on **observing interactions** that happen during the test. They store information about how methods were called, but they are usually more passive, being used for **post-test verification** rather than setting expectations beforehand.
+   - **Purpose**: Spies are used to verify interactions and state changes without needing to predefine expectations like mocks do. You can inspect what happened after the test completes.
+   - **How They Work**: Like mocks, spies record information about the method calls they receive, but they don’t enforce behavior during the test. You inspect them after the test has run.
+   - **Example Use**: You might use a spy to check how many times a method was called or with what parameters, without pre-defining those expectations.
+   
+   ```python
+   class SpyRepository:
+       def __init__(self):
+           self.saved_items = []
+       
+       def save(self, item):
+           self.saved_items.append(item)
+   
+   spy_repo = SpyRepository()
+   service.save_item(item, spy_repo)
+   assert len(spy_repo.saved_items) == 1
+   ```
+
+#### Summary of Their Uses:
+- **Mocks**: Used to verify **behavior** and interactions (did this method get called with these arguments?).
+- **Stubs**: Used to provide **predetermined responses** to method calls (simulate a return value).
+- **Fakes**: Provide a **working implementation** that is simpler than the real component (like an in-memory database).
+- **Spies**: Capture and record method calls for **post-test inspection** (was this method called, and how?).
+
+
+## Chapter 04: Service Layer and API
+
