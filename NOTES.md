@@ -217,4 +217,14 @@ I do believe is a tradeoff worth most of the times.
 
 
 ## Chapter 04: Service Layer and API
+```
+The first is an **application service (our service layer)**. Its job is to handle requests from the outside world and to orchestrate an operation. The second type of service is a domain service. This is the name for a piece of logic that belongs in the domain model but doesn’t sit naturally inside a stateful entity or value object.
+```
+
+We want to have fast unit tests and keep the integration and e2e as minimal as possible.
+
+**Domain Service** = business logic that doesn't fit the entity or value object. e.g. calculating a tax
+**Application Service** = orchestration and probably persistence in the database. e.g. creating a user
+
+The **application services** are like a API with our use cases to our domain, therefore we could refactor our domain as we see fit without breaking the API to the external world (or REST API in the handler or presentation layer).
 
