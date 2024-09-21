@@ -3,9 +3,9 @@ package e2e
 import (
 	"bytes"
 	"context"
-	"cosmic-go/cmd/api/handler"
 	"cosmic-go/internal/bootstrap"
 	"cosmic-go/internal/domain"
+	"cosmic-go/internal/handler"
 	"cosmic-go/pkg/env"
 	"cosmic-go/test/helpers"
 	"encoding/json"

@@ -1,9 +1,9 @@
 package main
 
 import (
-	"cosmic-go/cmd/api/handler"
 	"cosmic-go/internal/bootstrap"
 	"cosmic-go/internal/domain"
+	"cosmic-go/internal/handler"
 	"cosmic-go/internal/infra/repository"
 	"net/http"
 )

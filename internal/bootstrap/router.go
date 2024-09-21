@@ -1,7 +1,7 @@
 package bootstrap
 
 import (
-	"cosmic-go/cmd/api/handler"
+	"cosmic-go/internal/handler"
 	"net/http"
 )
 
