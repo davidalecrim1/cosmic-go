@@ -12,10 +12,8 @@ var (
 	ErrCannotDeallocateUnallocatedOrderLine = errors.New("cannot deallocate unallocated order line")
 )
 
-type Reference string
-
 type Product struct {
-	SKU Reference
+	SKU string
 }
 
 type OrderLine struct {
@@ -24,40 +22,40 @@ type OrderLine struct {
 }
 
 type Order struct {
-	Reference Reference
+	Reference string
 	Lines     []OrderLine
 }
 
 type Batch struct {
-	Reference         Reference
+	Reference         string
 	Product           Product
 	PurchasedQuantity int
 	ETA               time.Time
-	allocations       map[Reference]OrderLine
+	allocations       map[string]OrderLine
 }
 
-func NewBatch(ref Reference, product Product, quantity int, eta time.Time) *Batch {
+func NewBatch(ref string, product Product, quantity int, eta time.Time) *Batch {
 	return &Batch{
 		Reference:         ref,
 		Product:           product,
 		PurchasedQuantity: quantity,
 		ETA:               eta,
-		allocations:       make(map[Reference]OrderLine),
+		allocations:       make(map[string]OrderLine),
 	}
 }
 
-func NewBatchWithoutETA(ref Reference, product Product, quantity int) *Batch {
+func NewBatchWithoutETA(ref string, product Product, quantity int) *Batch {
 	return &Batch{
 		Reference:         ref,
 		Product:           product,
 		PurchasedQuantity: quantity,
-		allocations:       make(map[Reference]OrderLine),
+		allocations:       make(map[string]OrderLine),
 	}
 }
 
 func (sb *Batch) Allocate(line *OrderLine) error {
 	if sb.allocations == nil {
-		sb.allocations = make(map[Reference]OrderLine)
+		sb.allocations = make(map[string]OrderLine)
 	}
 
 	if sb.Product.SKU != line.Product.SKU {
@@ -94,16 +92,11 @@ func (sb *Batch) AvailableQuantity() int {
 	return sb.PurchasedQuantity - allocated
 }
 
-func Allocate(ol *OrderLine, bt []Batch) (Reference, error) {
+func Allocate(ol *OrderLine, bt []*Batch) (string, error) {
 	sortBasedOnEarliestETA := func(i, j int) bool {
 		return bt[i].ETA.Before(bt[j].ETA)
 	}
 
 	sort.Slice(bt, sortBasedOnEarliestETA)
 	return bt[0].Reference, bt[0].Allocate(ol)
-}
-
-type Repository interface {
-	SaveBatch(batch *Batch) error
-	GetBatch(ref Reference) (*Batch, error)
 }
