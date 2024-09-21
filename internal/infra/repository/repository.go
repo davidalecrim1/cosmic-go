@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"cosmic-go/internal/domain"
-	"log"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -13,41 +12,7 @@ type PostgresRepository struct {
 }
 
 func NewPostgresRepository(db *pgxpool.Pool) *PostgresRepository {
-	initializeSchema(db)
 	return &PostgresRepository{db: db}
-}
-
-func initializeSchema(db *pgxpool.Pool) {
-	schema := `
-	CREATE TABLE IF NOT EXISTS products (
-		sku TEXT PRIMARY KEY
-		);
-
-	CREATE TABLE IF NOT EXISTS batches (
-		reference TEXT PRIMARY KEY NOT NULL, 
-		product_sku TEXT REFERENCES products(sku),
-		purchased_quantity INT NOT NULL,
-		eta DATE
-		);
-
-	CREATE TABLE IF NOT EXISTS order_lines (
-		id SERIAL PRIMARY KEY NOT NULL, 
-		product_sku TEXT REFERENCES products(sku),
-		quantity INT NOT NULL,
-		orderid TEXT
-		);
-
-	CREATE TABLE IF NOT EXISTS allocations (
-		id SERIAL PRIMARY KEY NOT NULL, 
-		orderline_id INT REFERENCES order_lines(id),
-		batch_reference TEXT REFERENCES batches(reference)
-		);
-	`
-
-	_, err := db.Exec(context.Background(), schema)
-	if err != nil {
-		log.Fatal("failed to initiliaze schema with error:", err)
-	}
 }
 
 func (r *PostgresRepository) Add(b *domain.Batch) error {
@@ -156,9 +121,40 @@ func (r *PostgresRepository) Get(batchReference string) (*domain.Batch, error) {
 		}
 
 		batch.Allocate(&domain.OrderLine{
-			Product:  domain.Product{SKU: domain.Reference(productSku)},
+			Product:  domain.Product{SKU: productSku},
 			Quantity: quantity})
 	}
 
 	return &batch, nil
+}
+
+func (r *PostgresRepository) List() ([]*domain.Batch, error) {
+	query := `
+	SELECT reference, product_sku, purchased_quantity, eta
+	FROM batches;`
+
+	rows, err := r.db.Query(context.Background(), query)
+	if err != nil {
+		return nil, err
+	}
+
+	var batches []*domain.Batch
+
+	for rows.Next() {
+		var batch domain.Batch
+
+		err := rows.Scan(
+			&batch.Reference,
+			&batch.Product.SKU,
+			&batch.PurchasedQuantity,
+			&batch.ETA)
+
+		batches = append(batches, &batch)
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return batches, nil
 }

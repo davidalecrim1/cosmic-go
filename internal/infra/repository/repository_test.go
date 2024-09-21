@@ -2,10 +2,9 @@ package repository
 
 import (
 	"context"
+	"cosmic-go/internal/bootstrap"
 	"cosmic-go/internal/domain"
-	"cosmic-go/pkg/env"
-	"fmt"
-	"log"
+	"cosmic-go/test/helpers"
 	"testing"
 	"time"
 
@@ -14,9 +13,10 @@ import (
 )
 
 func TestRepository(t *testing.T) {
-	db, repo := newPostgresRepositoryHelper(t)
+	db, repo := newRepositoryHelper()
+	defer db.Close()
 
-	t.Run("repository can save a batch",
+	t.Run("add a batch",
 		func(t *testing.T) {
 			batch := domain.NewBatchWithoutETA("batch-001", domain.Product{SKU: "SMALL-TABLE"}, 10)
 			err := repo.Add(batch)
@@ -34,10 +34,10 @@ func TestRepository(t *testing.T) {
 			assert.Equal(t, batch.Product.SKU, resultedBatch.Product.SKU)
 			assert.Equal(t, batch.PurchasedQuantity, resultedBatch.PurchasedQuantity)
 
-			cleanUpRepository(db)
+			helpers.CleanUpRepositoryHelper(db)
 		})
 
-	t.Run("repository can retrieve a batch with allocations",
+	t.Run("get a batch with allocations",
 		func(t *testing.T) {
 			tx, err := db.Begin(context.Background())
 			assert.NoError(t, err)
@@ -71,50 +71,38 @@ func TestRepository(t *testing.T) {
 			_, err = repo.Get("batch-001")
 			assert.NoError(t, err)
 
-			cleanUpRepository(db)
+			helpers.CleanUpRepositoryHelper(db)
+		})
+
+	t.Run("list batches",
+		func(t *testing.T) {
+			query := `
+			INSERT INTO products (sku)
+			VALUES 
+			('SMALL-TABLE'), 
+			('LARGE-TABLE');
+			`
+			_, err := db.Exec(context.Background(), query)
+			assert.NoError(t, err)
+
+			query = `
+			INSERT INTO batches (reference, product_sku, purchased_quantity, eta) 
+			VALUES 
+			('batch-001', 'SMALL-TABLE', 200, $1),
+			('batch-002', 'LARGE-TABLE', 100, $1);
+			`
+			_, err = db.Exec(context.Background(), query, time.Time{})
+			assert.NoError(t, err)
+
+			batches, err := repo.List()
+			assert.NoError(t, err)
+			assert.Equal(t, 2, len(batches))
+
+			helpers.CleanUpRepositoryHelper(db)
 		})
 }
 
-func newPostgresRepositoryHelper(t *testing.T) (*pgxpool.Pool, *PostgresRepository) {
-	t.Helper()
-
-	dbEndpoint := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		env.GetEnvOrSetDefault("DB_USER", "admin"),
-		env.GetEnvOrSetDefault("DB_PASSWORD", "password"),
-		env.GetEnvOrSetDefault("DB_HOST", "localhost"),
-		env.GetEnvOrSetDefault("DB_PORT", "5432"),
-		env.GetEnvOrSetDefault("DB_SCHEMA", "cosmic"))
-
-	db, err := pgxpool.New(context.Background(), dbEndpoint)
-	if err != nil {
-		log.Fatalf("error loading database configuration: %v", err)
-	}
-
+func newRepositoryHelper() (*pgxpool.Pool, *PostgresRepository) {
+	db := bootstrap.InitializeDatabase()
 	return db, NewPostgresRepository(db)
-}
-
-func cleanUpRepository(db *pgxpool.Pool) {
-	query := `
-		DELETE FROM allocations;
-		DELETE FROM order_lines;
-		DELETE FROM batches;
-		DELETE FROM products;
-		`
-	_, err := db.Exec(context.Background(), query)
-	if err != nil {
-		log.Fatalf("error cleaning up database: %v", err)
-	}
-}
-
-type FakeRepository struct {
-	batches map[string]*domain.Batch
-}
-
-func (r *FakeRepository) Add(batch *domain.Batch) error {
-	r.batches[string(batch.Reference)] = batch
-	return nil
-}
-
-func (r *FakeRepository) Get(reference string) (*domain.Batch, error) {
-	return r.batches[reference], nil
 }

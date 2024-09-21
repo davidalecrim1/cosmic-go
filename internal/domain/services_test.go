@@ -36,3 +36,42 @@ func TestService(t *testing.T) {
 			assert.Error(t, err, ErrInvalidSku)
 		})
 }
+
+type FakeRepository struct {
+	batches map[string]*Batch
+}
+
+func NewFakeRepository() *FakeRepository {
+	return &FakeRepository{
+		batches: make(map[string]*Batch),
+	}
+}
+
+func NewFakeRepositoryWithBatch(batches []Batch) *FakeRepository {
+	repo := &FakeRepository{
+		batches: make(map[string]*Batch),
+	}
+
+	for _, batch := range batches {
+		repo.batches[batch.Reference] = &batch
+	}
+
+	return repo
+}
+
+func (r *FakeRepository) Add(batch *Batch) error {
+	r.batches[string(batch.Reference)] = batch
+	return nil
+}
+
+func (r *FakeRepository) Get(reference string) (*Batch, error) {
+	return r.batches[reference], nil
+}
+
+func (r *FakeRepository) List() ([]*Batch, error) {
+	batches := make([]*Batch, 0, len(r.batches))
+	for _, batch := range r.batches {
+		batches = append(batches, batch)
+	}
+	return batches, nil
+}

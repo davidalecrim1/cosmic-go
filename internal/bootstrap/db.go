@@ -22,5 +22,39 @@ func InitializeDatabase() *pgxpool.Pool {
 		log.Fatalf("error loading database configuration: %v", err)
 	}
 
+	initializeSchema(db)
 	return db
+}
+
+func initializeSchema(db *pgxpool.Pool) {
+	schema := `
+	CREATE TABLE IF NOT EXISTS products (
+		sku TEXT PRIMARY KEY
+		);
+
+	CREATE TABLE IF NOT EXISTS batches (
+		reference TEXT PRIMARY KEY NOT NULL, 
+		product_sku TEXT REFERENCES products(sku),
+		purchased_quantity INT NOT NULL,
+		eta DATE
+		);
+
+	CREATE TABLE IF NOT EXISTS order_lines (
+		id SERIAL PRIMARY KEY NOT NULL, 
+		product_sku TEXT REFERENCES products(sku),
+		quantity INT NOT NULL,
+		orderid TEXT
+		);
+
+	CREATE TABLE IF NOT EXISTS allocations (
+		id SERIAL PRIMARY KEY NOT NULL, 
+		orderline_id INT REFERENCES order_lines(id),
+		batch_reference TEXT REFERENCES batches(reference)
+		);
+	`
+
+	_, err := db.Exec(context.Background(), schema)
+	if err != nil {
+		log.Fatal("failed to initiliaze schema with error:", err)
+	}
 }
