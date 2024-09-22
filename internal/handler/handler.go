@@ -2,6 +2,7 @@ package handler
 
 import (
 	"cosmic-go/internal/domain"
+	"cosmic-go/internal/service"
 	"encoding/json"
 	"errors"
 	"log"
@@ -9,10 +10,10 @@ import (
 )
 
 type Handler struct {
-	svc *domain.Service
+	svc *service.Service
 }
 
-func NewHandler(svc *domain.Service) *Handler {
+func NewHandler(svc *service.Service) *Handler {
 	return &Handler{
 		svc: svc,
 	}
@@ -34,7 +35,7 @@ func (h *Handler) Allocate(w http.ResponseWriter, r *http.Request) {
 
 	batchref, err := h.svc.Allocate(line)
 
-	if errors.Is(err, domain.ErrInvalidSku) {
+	if errors.Is(err, service.ErrInvalidSku) {
 		w.WriteHeader(http.StatusBadRequest)
 
 		response := &AllocationBadRequestResponse{

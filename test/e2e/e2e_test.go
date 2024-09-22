@@ -32,7 +32,7 @@ func TestE2E(t *testing.T) {
 			mediumBatch := domain.NewBatch("batch-002", domain.Product{SKU: sku}, 100, time.Now().Add(time.Hour*24))
 			otherBatch := domain.NewBatch("batch-003", domain.Product{SKU: sku}, 100, time.Time{})
 
-			insertProductHelper(t, db, sku)
+			insertProductHelper(t, db, domain.Product{SKU: sku})
 			apiEndpoint := getApiEndpointHelper(t)
 
 			insertBatchHelper(t, db,
@@ -113,7 +113,7 @@ func getApiEndpointHelper(t *testing.T) string {
 	return env.GetEnvOrSetDefault("API_URL", "http://localhost:8080")
 }
 
-func insertProductHelper(t *testing.T, db *pgxpool.Pool, sku string) {
+func insertProductHelper(t *testing.T, db *pgxpool.Pool, product domain.Product) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -121,7 +121,7 @@ func insertProductHelper(t *testing.T, db *pgxpool.Pool, sku string) {
 	INSERT INTO products (sku)
 	VALUES ($1);
 	`
-	_, err := db.Exec(ctx, query, sku)
+	_, err := db.Exec(ctx, query, product.SKU)
 	if err != nil {
 		t.Fatal("failed to insert product: ", err)
 	}
