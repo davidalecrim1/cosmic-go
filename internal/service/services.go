@@ -14,9 +14,9 @@ type Service struct {
 }
 
 type Repository interface {
-	Add(*domain.Batch) error
-	Get(ref string) (*domain.Batch, error)
-	List() ([]*domain.Batch, error)
+	AddBatch(*domain.Batch) error
+	GetBatch(ref string) (*domain.Batch, error)
+	ListBatches() ([]*domain.Batch, error)
 }
 
 func NewService(repo Repository) *Service {
@@ -24,7 +24,7 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) Allocate(ol *domain.OrderLine) (string, error) {
-	batches, err := s.repo.List()
+	batches, err := s.repo.ListBatches()
 	if err != nil {
 		return "", err
 	}
@@ -43,4 +43,8 @@ func isValidSku(sku string, batches []*domain.Batch) bool {
 		}
 	}
 	return false
+}
+
+func (s *Service) AddBatch(b *domain.Batch) error {
+	return s.repo.AddBatch(b)
 }

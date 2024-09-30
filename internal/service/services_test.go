@@ -8,7 +8,7 @@ import (
 )
 
 func TestService(t *testing.T) {
-	t.Run("returns allocation",
+	t.Run("allocate batch",
 		func(t *testing.T) {
 			product := domain.Product{SKU: "SMALL-TABLE"}
 			batch := domain.NewBatchWithoutETA("batch-001", product, 100)
@@ -26,7 +26,7 @@ func TestService(t *testing.T) {
 			assert.Equal(t, "batch-001", batchRef)
 		})
 
-	t.Run("error for invalid sku",
+	t.Run("error for invalid sku on allocate",
 		func(t *testing.T) {
 			product := domain.Product{SKU: "SMALL-TABLE"}
 			batch := domain.NewBatchWithoutETA("batch-001", product, 100)
@@ -41,6 +41,25 @@ func TestService(t *testing.T) {
 
 			_, err := svc.Allocate(line)
 			assert.Error(t, err, ErrInvalidSku)
+		})
+
+	t.Run("add batch",
+		func(t *testing.T) {
+			batch := domain.NewBatchWithoutETA(
+				"batch-001",
+				domain.Product{SKU: "SMALL-TABLE"},
+				100)
+
+			repo := NewFakeRepository()
+			svc := NewService(repo)
+
+			err := svc.AddBatch(batch)
+			assert.NoError(t, err)
+
+			persistedBatch, err := repo.GetBatch("batch-001")
+			assert.NoError(t, err)
+
+			assert.Equal(t, persistedBatch, batch)
 		})
 }
 
@@ -66,16 +85,16 @@ func NewFakeRepositoryWithBatch(batches []domain.Batch) *FakeRepository {
 	return repo
 }
 
-func (r *FakeRepository) Add(batch *domain.Batch) error {
-	r.batches[string(batch.Reference)] = batch
+func (r *FakeRepository) AddBatch(batch *domain.Batch) error {
+	r.batches[batch.Reference] = batch
 	return nil
 }
 
-func (r *FakeRepository) Get(reference string) (*domain.Batch, error) {
+func (r *FakeRepository) GetBatch(reference string) (*domain.Batch, error) {
 	return r.batches[reference], nil
 }
 
-func (r *FakeRepository) List() ([]*domain.Batch, error) {
+func (r *FakeRepository) ListBatches() ([]*domain.Batch, error) {
 	batches := make([]*domain.Batch, 0, len(r.batches))
 	for _, batch := range r.batches {
 		batches = append(batches, batch)
