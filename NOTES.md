@@ -228,3 +228,40 @@ We want to have fast unit tests and keep the integration and e2e as minimal as p
 
 The **application services** are like a API with our use cases to our domain, therefore we could refactor our domain as we see fit without breaking the API to the external world (or REST API in the handler or presentation layer).
 
+
+## Chapter 05: TDD in High Gear and Low Gear
+
+```
+Let’s see what happens if we take this a step further. Since we can test our software against the service layer, we don’t really need tests for the domain model anymore. Instead, we could rewrite all of the domain-level tests from [chapter_01_domain_model] in terms of the service layer
+
+Why would we want to do that?
+
+Tests are supposed to help us change our system fearlessly, but often we see teams writing too many tests against their domain model. This causes problems when they come to change their codebase and find that they need to update tens or even hundreds of unit tests.
+```
+
+This is interesting.
+
+```
+Every line of code that we put in a test is like a blob of glue, holding the system in a particular shape. The more low-level tests we have, the harder it will be to change things.
+```
+
+This is important. When we need to change our systems, we also need to change our tests.
+
+```
+Extreme programming (XP) exhorts us to "listen to the code." When we’re writing tests, we might find that the code is hard to use or notice a code smell. This is a trigger for us to refactor, and to reconsider our design.
+```
+
+### High and Low Gear
+ 
+```
+Most of the time, when we are adding a new feature or fixing a bug, we don’t need to make extensive changes to the domain model. In these cases, we prefer to write tests against services because of the lower coupling and higher coverage.
+```
+
+I've decided not to swap the domain structs for primitives given I rather use structs. Even if the domain is coupled with the outside, I believe is a worph trade off. Reviewing what Uncle Bob says about this with ChatGPT:
+- Passing primitive types (like strings, integers, etc.) to achieve decoupling can reduce direct dependencies between layers, but it also runs the risk of losing some of the clarity and expressiveness that comes from using structured domain objects. Domain objects typically encapsulate related data and business logic, providing better readability and preventing errors related to passing incorrect or misaligned primitives.
+- Passing many arguments is discouraged, whether they are primitives or structured objects. Instead, Uncle Bob would suggest bundling related data into cohesive objects, making function calls cleaner.
+- Decoupling is encouraged, but not at the cost of clarity or maintainability. The service layer should ideally depend on abstractions (e.g., interfaces or **DTOs**), which can allow decoupling without relying too heavily on primitives.
+
+I could use DTOs, but I do not see why in small software and a language like Go that focus on simplicity.
+
+
