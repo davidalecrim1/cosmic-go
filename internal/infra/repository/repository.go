@@ -15,7 +15,7 @@ func NewPostgresRepository(db *pgxpool.Pool) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
-func (r *PostgresRepository) Add(b *domain.Batch) error {
+func (r *PostgresRepository) AddBatch(b *domain.Batch) error {
 	tx, err := r.db.Begin(context.Background())
 	if err != nil {
 		return err
@@ -84,7 +84,7 @@ func (r *PostgresRepository) Add(b *domain.Batch) error {
 	return nil
 }
 
-func (r *PostgresRepository) Get(batchReference string) (*domain.Batch, error) {
+func (r *PostgresRepository) GetBatch(batchReference string) (*domain.Batch, error) {
 	query := `
 	SELECT b.reference, b.product_sku, b.purchased_quantity, b.eta
 	FROM batches b
@@ -128,7 +128,7 @@ func (r *PostgresRepository) Get(batchReference string) (*domain.Batch, error) {
 	return &batch, nil
 }
 
-func (r *PostgresRepository) List() ([]*domain.Batch, error) {
+func (r *PostgresRepository) ListBatches() ([]*domain.Batch, error) {
 	query := `
 	SELECT reference, product_sku, purchased_quantity, eta
 	FROM batches;`

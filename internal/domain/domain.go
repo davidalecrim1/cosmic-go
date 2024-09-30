@@ -31,7 +31,7 @@ type Batch struct {
 	Product           Product
 	PurchasedQuantity int
 	ETA               time.Time
-	allocations       map[string]OrderLine
+	Allocations       map[string]OrderLine
 }
 
 func NewBatch(ref string, product Product, quantity int, eta time.Time) *Batch {
@@ -40,7 +40,7 @@ func NewBatch(ref string, product Product, quantity int, eta time.Time) *Batch {
 		Product:           product,
 		PurchasedQuantity: quantity,
 		ETA:               eta,
-		allocations:       make(map[string]OrderLine),
+		Allocations:       make(map[string]OrderLine),
 	}
 }
 
@@ -49,47 +49,47 @@ func NewBatchWithoutETA(ref string, product Product, quantity int) *Batch {
 		Reference:         ref,
 		Product:           product,
 		PurchasedQuantity: quantity,
-		allocations:       make(map[string]OrderLine),
+		Allocations:       make(map[string]OrderLine),
 	}
 }
 
-func (sb *Batch) Allocate(line *OrderLine) error {
-	if sb.allocations == nil {
-		sb.allocations = make(map[string]OrderLine)
+func (b *Batch) Allocate(line *OrderLine) error {
+	if b.Allocations == nil {
+		b.Allocations = make(map[string]OrderLine)
 	}
 
-	if sb.Product.SKU != line.Product.SKU {
+	if b.Product.SKU != line.Product.SKU {
 		return ErrProductSkuMismatch
 	}
 
-	if sb.AvailableQuantity() < line.Quantity {
+	if b.AvailableQuantity() < line.Quantity {
 		return ErrOrderLinesOverBatch
 	}
 
-	sb.allocations[line.Product.SKU] = *line
+	b.Allocations[line.Product.SKU] = *line
 	return nil
 }
 
-func (sb *Batch) Deallocate(line *OrderLine) error {
-	if sb.Product.SKU != line.Product.SKU {
+func (b *Batch) Deallocate(line *OrderLine) error {
+	if b.Product.SKU != line.Product.SKU {
 		return ErrCannotDeallocateUnallocatedOrderLine
 	}
 
-	if sb.AvailableQuantity() < line.Quantity {
+	if b.AvailableQuantity() < line.Quantity {
 		return ErrOrderLinesOverBatch
 	}
 
-	delete(sb.allocations, line.Product.SKU)
+	delete(b.Allocations, line.Product.SKU)
 	return nil
 }
 
-func (sb *Batch) AvailableQuantity() int {
+func (b *Batch) AvailableQuantity() int {
 	allocated := 0
-	for _, line := range sb.allocations {
+	for _, line := range b.Allocations {
 		allocated += line.Quantity
 	}
 
-	return sb.PurchasedQuantity - allocated
+	return b.PurchasedQuantity - allocated
 }
 
 func Allocate(ol *OrderLine, bt []*Batch) (string, error) {

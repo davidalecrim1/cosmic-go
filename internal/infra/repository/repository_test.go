@@ -19,7 +19,7 @@ func TestRepository(t *testing.T) {
 	t.Run("add a batch",
 		func(t *testing.T) {
 			batch := domain.NewBatchWithoutETA("batch-001", domain.Product{SKU: "SMALL-TABLE"}, 10)
-			err := repo.Add(batch)
+			err := repo.AddBatch(batch)
 			assert.NoError(t, err)
 
 			resultedBatch := &domain.Batch{}
@@ -68,7 +68,7 @@ func TestRepository(t *testing.T) {
 
 			tx.Commit(context.Background())
 
-			_, err = repo.Get("batch-001")
+			_, err = repo.GetBatch("batch-001")
 			assert.NoError(t, err)
 
 			helpers.CleanUpRepositoryHelper(db)
@@ -94,7 +94,7 @@ func TestRepository(t *testing.T) {
 			_, err = db.Exec(context.Background(), query, time.Time{})
 			assert.NoError(t, err)
 
-			batches, err := repo.List()
+			batches, err := repo.ListBatches()
 			assert.NoError(t, err)
 			assert.Equal(t, 2, len(batches))
 
