@@ -27,7 +27,10 @@ func InitializeDatabase() *pgxpool.Pool {
 }
 
 func initializeSchema(db *pgxpool.Pool) {
+	ctx := context.Background()
 	schema := `
+	BEGIN;
+
 	CREATE TABLE IF NOT EXISTS products (
 		sku TEXT PRIMARY KEY
 		);
@@ -51,9 +54,11 @@ func initializeSchema(db *pgxpool.Pool) {
 		orderline_id INT REFERENCES order_lines(id),
 		batch_reference TEXT REFERENCES batches(reference)
 		);
+
+	COMMIT;
 	`
 
-	_, err := db.Exec(context.Background(), schema)
+	_, err := db.Exec(ctx, schema)
 	if err != nil {
 		log.Fatal("failed to initiliaze schema with error:", err)
 	}
