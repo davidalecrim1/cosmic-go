@@ -11,7 +11,8 @@ func TestDomainModel(t *testing.T) {
 	t.Run("allocating to a batch reduces the available quantity",
 		func(t *testing.T) {
 			batch, order := createBatchAndOrderLine(t, "SMALL-TABLE", 20, 2)
-			batch.Allocate(order)
+			err := batch.Allocate(order)
+			assert.NoError(t, err)
 			assert.Equal(t, 18, batch.AvailableQuantity())
 		})
 
@@ -33,7 +34,7 @@ func TestDomainModel(t *testing.T) {
 	t.Run("cannot allocate if skus do not match",
 		func(t *testing.T) {
 			batch := NewBatch("batch-001", Product{"ELEC-TRUMPET"}, 10, time.Now())
-			line := &OrderLine{Product{"SMALL-TABLE"}, 10}
+			line := &OrderLine{Product{"SMALL-TABLE"}, 10, "order-001"}
 			err := batch.Allocate(line)
 			assert.Error(t, err)
 		})
@@ -41,7 +42,7 @@ func TestDomainModel(t *testing.T) {
 	t.Run("can only deallocate allocated order lines",
 		func(t *testing.T) {
 			batch := NewBatch("batch-001", Product{"ELEC-TRUMPET"}, 10, time.Now())
-			unallocatedLine := &OrderLine{Product{"SMALL-TABLE"}, 1}
+			unallocatedLine := &OrderLine{Product{"SMALL-TABLE"}, 1, "order-001"}
 			err := batch.Deallocate(unallocatedLine)
 			assert.Error(t, err)
 			assert.Equal(t, 10, batch.AvailableQuantity())
@@ -63,9 +64,10 @@ func TestDomainModel(t *testing.T) {
 		func(t *testing.T) {
 			inStockBatch := NewBatchWithoutETA("in_stock_batch", Product{"RETRO-CLOCK"}, 100)
 			shipmentBatch := NewBatch("shipment_batch", Product{"RETRO-CLOCK"}, 100, time.Now().Add(time.Hour*24))
-			line := &OrderLine{Product{"RETRO-CLOCK"}, 10}
+			line := &OrderLine{Product{"RETRO-CLOCK"}, 10, "order-001"}
 
-			Allocate(line, []*Batch{inStockBatch, shipmentBatch})
+			_, err := Allocate(line, []*Batch{inStockBatch, shipmentBatch})
+			assert.NoError(t, err)
 			assert.Equal(t, 90, inStockBatch.AvailableQuantity())
 			assert.Equal(t, 100, shipmentBatch.AvailableQuantity())
 		})
@@ -76,9 +78,10 @@ func TestDomainModel(t *testing.T) {
 			medium := NewBatch("medium_batch", Product{"RETRO-CLOCK"}, 100, time.Now().Add(time.Hour*24))
 			later := NewBatch("later_batch", Product{"RETRO-CLOCK"}, 100, time.Now().Add(time.Hour*48))
 
-			line := &OrderLine{Product{"RETRO-CLOCK"}, 10}
+			line := &OrderLine{Product{"RETRO-CLOCK"}, 10, "order-001"}
 
-			Allocate(line, []*Batch{later, earliest, medium})
+			_, err := Allocate(line, []*Batch{later, earliest, medium})
+			assert.NoError(t, err)
 			assert.Equal(t, 90, earliest.AvailableQuantity())
 			assert.Equal(t, 100, medium.AvailableQuantity())
 			assert.Equal(t, 100, later.AvailableQuantity())
@@ -87,10 +90,11 @@ func TestDomainModel(t *testing.T) {
 	t.Run("out of stock error if cannot allocate",
 		func(t *testing.T) {
 			batch, line := createBatchAndOrderLine(t, "ELEC-TRUMPET", 10, 10)
-			anotherLine := &OrderLine{Product{"ELEC-TRUMPET"}, 2}
+			anotherLine := &OrderLine{Product{"ELEC-TRUMPET"}, 2, "order-001"}
 
-			Allocate(line, []*Batch{batch})
-			_, err := Allocate(anotherLine, []*Batch{batch})
+			_, err := Allocate(line, []*Batch{batch})
+			assert.NoError(t, err)
+			_, err = Allocate(anotherLine, []*Batch{batch})
 			assert.ErrorIs(t, err, ErrOrderLinesOverBatch)
 		})
 }
@@ -98,6 +102,6 @@ func TestDomainModel(t *testing.T) {
 func createBatchAndOrderLine(t *testing.T, sku string, batchQty, lineQty int) (*Batch, *OrderLine) {
 	t.Helper()
 	batch := NewBatch("batch-001", Product{sku}, batchQty, time.Now())
-	line := OrderLine{Product{sku}, lineQty}
+	line := OrderLine{Product{sku}, lineQty, "order-001"}
 	return batch, &line
 }

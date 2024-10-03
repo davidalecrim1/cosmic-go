@@ -19,11 +19,7 @@ type Product struct {
 type OrderLine struct {
 	Product  Product
 	Quantity int
-}
-
-type Order struct {
-	Reference string
-	Lines     []OrderLine
+	OrderId  string
 }
 
 type Batch struct {
@@ -92,7 +88,7 @@ func (b *Batch) AvailableQuantity() int {
 	return b.PurchasedQuantity - allocated
 }
 
-func Allocate(ol *OrderLine, bt []*Batch) (string, error) {
+func Allocate(ol *OrderLine, bt []*Batch) (reference string, err error) {
 	sortBasedOnEarliestETA := func(i, j int) bool {
 		return bt[i].ETA.Before(bt[j].ETA)
 	}
