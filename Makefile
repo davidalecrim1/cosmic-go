@@ -2,7 +2,10 @@ lint:
 	golangci-lint run
 
 integration-test:
-	go test -tags integration ./...
+	go test -tags integration ./... -coverprofile=integration_coverage.out
+
+e2e-test:
+	go test -tags e2e ./... -coverprofile=e2e_coverage.out
 
 run:
 	go run ./cmd/api/server.go
