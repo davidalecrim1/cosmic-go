@@ -6,3 +6,10 @@ integration-test:
 
 run:
 	go run ./cmd/api/server.go
+
+run_db:
+	docker-compose up postgres-db pgadmin-ui -d
+
+restart_db:
+	docker-compose down postgres-db pgadmin-ui
+	make run_db
