@@ -1,3 +1,5 @@
+//go:build e2e
+
 package e2e
 
 import (
@@ -21,6 +23,7 @@ import (
 
 func TestE2E(t *testing.T) {
 	db := bootstrap.InitializeDatabase()
+	defer db.Close()
 
 	t.Run("api returns allocation with 201",
 		func(t *testing.T) {
@@ -71,7 +74,9 @@ func TestE2E(t *testing.T) {
 			expectedBatch := "batch-003"
 			assert.Equal(t, expectedBatch, aResp.BatchRef)
 
-			helpers.CleanUpRepositoryHelper(db)
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
 		})
 
 	t.Run("api returns 400 and error message",
@@ -97,14 +102,98 @@ func TestE2E(t *testing.T) {
 			body, err := io.ReadAll(resp.Body)
 			assert.NoError(t, err)
 
-			aBody := &handler.AllocationBadRequestResponse{}
+			aBody := &handler.BadRequestResponse{}
 
 			err = json.Unmarshal(body, aBody)
 			assert.NoError(t, err)
 			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 			assert.Equal(t, "invalid sku", aBody.Message)
 
-			helpers.CleanUpRepositoryHelper(db)
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
+		})
+
+	t.Run("api returns 200 for deallocate",
+		func(t *testing.T) {
+			sku := "SMALL-TABLE"
+
+			orderLine := &domain.OrderLine{
+				Product:  domain.Product{SKU: sku},
+				Quantity: 5,
+				OrderId:  "order-001",
+			}
+
+			batch := domain.NewBatch("batch-001", domain.Product{SKU: sku}, 20, time.Now())
+
+			insertProductHelper(t, db, domain.Product{SKU: sku})
+			insertBatchHelper(t, db, []*domain.Batch{batch})
+			insertOrderLineAndAllocationsToBatchHelper(t, db, orderLine, batch.Reference)
+
+			apiEndpoint := getApiEndpointHelper(t)
+			requestBody := fmt.Sprintf(`
+				{
+					"orderid": "%s",
+					"sku": "%s"
+				}
+				`,
+				orderLine.OrderId,
+				sku,
+			)
+
+			resp, err := http.Post(apiEndpoint+"/deallocate",
+				"application/json",
+				bytes.NewBuffer([]byte(requestBody)),
+			)
+			assert.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
+		})
+
+	t.Run("invalid order id for deallocation",
+		func(t *testing.T) {
+			sku := "SMALL-TABLE"
+
+			orderLine := &domain.OrderLine{
+				Product:  domain.Product{SKU: sku},
+				Quantity: 5,
+				OrderId:  "order-001",
+			}
+
+			batch := domain.NewBatch("batch-001", domain.Product{SKU: sku}, 20, time.Now())
+
+			insertProductHelper(t, db, domain.Product{SKU: sku})
+			insertBatchHelper(t, db, []*domain.Batch{batch})
+			insertOrderLineAndAllocationsToBatchHelper(t, db, orderLine, batch.Reference)
+
+			apiEndpoint := getApiEndpointHelper(t)
+			invalidOrderId := "order-002"
+
+			requestBody := fmt.Sprintf(`
+				{
+					"orderid": "%s",
+					"sku": "%s"
+				}
+				`,
+				invalidOrderId,
+				sku,
+			)
+
+			resp, err := http.Post(apiEndpoint+"/deallocate",
+				"application/json",
+				bytes.NewBuffer([]byte(requestBody)),
+			)
+			assert.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
 		})
 }
 
@@ -148,6 +237,38 @@ func insertBatchHelper(t *testing.T, db *pgxpool.Pool, batches []*domain.Batch) 
 			t.Fatal("failed to insert batch: ", err)
 		}
 	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		t.Fatal("failed to commit tx: ", err)
+	}
+}
+
+func insertOrderLineAndAllocationsToBatchHelper(
+	t *testing.T,
+	db *pgxpool.Pool,
+	ol *domain.OrderLine,
+	batchRef string,
+) {
+	t.Helper()
+	ctx := context.Background()
+
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal("failed to insert batch helper: ", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var orderlineId int
+	query := `INSERT INTO order_lines (product_sku, quantity, orderid)
+	VALUES ($1, $2, $3) RETURNING id;`
+	err = tx.QueryRow(ctx, query, ol.Product.SKU, ol.Quantity, ol.OrderId).Scan(&orderlineId)
+	assert.NoError(t, err)
+
+	query = `INSERT INTO allocations (orderline_id, batch_reference)
+	VALUES ($1, $2);`
+	_, err = tx.Exec(ctx, query, orderlineId, batchRef)
+	assert.NoError(t, err)
 
 	err = tx.Commit(ctx)
 	if err != nil {

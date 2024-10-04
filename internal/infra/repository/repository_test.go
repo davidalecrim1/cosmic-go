@@ -1,3 +1,5 @@
+//go:build integration
+
 package repository
 
 import (
@@ -18,8 +20,10 @@ func TestRepository(t *testing.T) {
 
 	t.Run("add a batch",
 		func(t *testing.T) {
+			ctx := context.Background()
+
 			batch := domain.NewBatchWithoutETA("batch-001", domain.Product{SKU: "SMALL-TABLE"}, 10)
-			err := repo.AddBatch(batch)
+			err := repo.AddBatch(ctx, batch)
 			assert.NoError(t, err)
 
 			resultedBatch := &domain.Batch{}
@@ -34,55 +38,63 @@ func TestRepository(t *testing.T) {
 			assert.Equal(t, batch.Product.SKU, resultedBatch.Product.SKU)
 			assert.Equal(t, batch.PurchasedQuantity, resultedBatch.PurchasedQuantity)
 
-			helpers.CleanUpRepositoryHelper(db)
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
 		})
 
 	t.Run("get a batch with allocations",
 		func(t *testing.T) {
-			tx, err := db.Begin(context.Background())
+			ctx := context.Background()
+
+			tx, err := db.Begin(ctx)
 			assert.NoError(t, err)
-			defer tx.Rollback(context.Background())
+			defer tx.Rollback(ctx)
 
 			query := `INSERT INTO products (sku)
 			VALUES ($1);`
-			_, err = db.Exec(context.Background(), query, "SMALL-TABLE")
+			_, err = db.Exec(ctx, query, "SMALL-TABLE")
 			assert.NoError(t, err)
 
 			var orderlineId int
 			query = `INSERT INTO order_lines (product_sku, quantity, orderid)
 			VALUES ($1, $2, $3) RETURNING id;`
 
-			err = tx.QueryRow(context.Background(), query, "SMALL-TABLE", 10, "order-001").
+			err = tx.QueryRow(ctx, query, "SMALL-TABLE", 10, "order-001").
 				Scan(&orderlineId)
 			assert.NoError(t, err)
 
 			query = `INSERT INTO batches (reference, product_sku, purchased_quantity, eta)
 			VALUES ($1, $2, $3, $4);`
-			_, err = tx.Exec(context.Background(), query, "batch-001", "SMALL-TABLE", 20, time.Time{})
+			_, err = tx.Exec(ctx, query, "batch-001", "SMALL-TABLE", 20, time.Time{})
 			assert.NoError(t, err)
 
 			query = `INSERT INTO allocations (orderline_id, batch_reference)
 			VALUES ($1, $2);`
-			_, err = tx.Exec(context.Background(), query, orderlineId, "batch-001")
+			_, err = tx.Exec(ctx, query, orderlineId, "batch-001")
 			assert.NoError(t, err)
 
-			tx.Commit(context.Background())
+			tx.Commit(ctx)
 
-			_, err = repo.GetBatch("batch-001")
+			_, err = repo.GetBatchByReference(ctx, "batch-001")
 			assert.NoError(t, err)
 
-			helpers.CleanUpRepositoryHelper(db)
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
 		})
 
 	t.Run("list batches",
 		func(t *testing.T) {
+			ctx := context.Background()
+
 			query := `
 			INSERT INTO products (sku)
 			VALUES 
 			('SMALL-TABLE'), 
 			('LARGE-TABLE');
 			`
-			_, err := db.Exec(context.Background(), query)
+			_, err := db.Exec(ctx, query)
 			assert.NoError(t, err)
 
 			query = `
@@ -91,14 +103,58 @@ func TestRepository(t *testing.T) {
 			('batch-001', 'SMALL-TABLE', 200, $1),
 			('batch-002', 'LARGE-TABLE', 100, $1);
 			`
-			_, err = db.Exec(context.Background(), query, time.Time{})
+			_, err = db.Exec(ctx, query, time.Time{})
 			assert.NoError(t, err)
 
-			batches, err := repo.ListBatches()
+			batches, err := repo.ListBatches(ctx)
 			assert.NoError(t, err)
 			assert.Equal(t, 2, len(batches))
 
-			helpers.CleanUpRepositoryHelper(db)
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
+		})
+
+	t.Run("get batch with allocations by sku",
+		func(t *testing.T) {
+			ctx := context.Background()
+			validSku := "SMALL-TABLE"
+
+			tx, err := db.Begin(ctx)
+			assert.NoError(t, err)
+			defer tx.Rollback(ctx)
+
+			query := `INSERT INTO products (sku)
+			VALUES ($1);`
+			_, err = db.Exec(ctx, query, validSku)
+			assert.NoError(t, err)
+
+			var orderlineId int
+			query = `INSERT INTO order_lines (product_sku, quantity, orderid)
+			VALUES ($1, $2, $3) RETURNING id;`
+
+			err = tx.QueryRow(ctx, query, validSku, 10, "order-001").
+				Scan(&orderlineId)
+			assert.NoError(t, err)
+
+			query = `INSERT INTO batches (reference, product_sku, purchased_quantity, eta)
+			VALUES ($1, $2, $3, $4);`
+			_, err = tx.Exec(ctx, query, "batch-001", validSku, 20, time.Time{})
+			assert.NoError(t, err)
+
+			query = `INSERT INTO allocations (orderline_id, batch_reference)
+			VALUES ($1, $2);`
+			_, err = tx.Exec(ctx, query, orderlineId, "batch-001")
+			assert.NoError(t, err)
+
+			tx.Commit(ctx)
+
+			_, err = repo.getBatchBySku(ctx, validSku)
+			assert.NoError(t, err)
+
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
 		})
 }
 
