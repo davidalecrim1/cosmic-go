@@ -249,27 +249,26 @@ func (r *PostgresRepository) ListBatches(
 	SELECT reference, product_sku, purchased_quantity, eta
 	FROM batches;`
 
-	rows, err := r.db.Query(context.Background(), query)
+	rows, err := r.db.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	var batches []*domain.Batch
 
 	for rows.Next() {
 		var batch domain.Batch
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&batch.Reference,
 			&batch.Product.SKU,
 			&batch.PurchasedQuantity,
-			&batch.ETA)
-
-		batches = append(batches, &batch)
-
-		if err != nil {
+			&batch.ETA); err != nil {
 			return nil, err
 		}
+
+		batches = append(batches, &batch)
 	}
 
 	return batches, nil
@@ -456,7 +455,9 @@ func (r *PostgresRepository) deleteDeallocatedOrderLines(
 		if r.orderLineDeallocated(allocatedOrderLine, updatedB) {
 			query := `
 			DELETE FROM allocations
-			WHERE orderline_id = $1
+			WHERE orderline_id = (
+				SELECT id FROM order_lines WHERE orderid = $1
+			)
 			AND batch_reference = $2;
 			`
 			_, err := tx.Exec(
