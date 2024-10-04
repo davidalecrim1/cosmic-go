@@ -2,8 +2,9 @@ package repository
 
 import (
 	"context"
-	"cosmic-go/internal/domain"
 	"log"
+
+	"cosmic-go/internal/domain"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,7 +18,10 @@ func NewPostgresRepository(db *pgxpool.Pool) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
-func (r *PostgresRepository) AddBatch(ctx context.Context, b *domain.Batch) error {
+func (r *PostgresRepository) AddBatch(
+	ctx context.Context, 
+	b *domain.Batch,
+) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -81,7 +85,6 @@ func (r *PostgresRepository) insertBatch(
 	b *domain.Batch,
 	tx pgx.Tx,
 ) error {
-
 	query := `
 	INSERT INTO batches (reference, product_sku, purchased_quantity, eta)
 	VALUES ($1, $2, $3, $4);
@@ -102,7 +105,14 @@ func (r *PostgresRepository) insertOrderLineAndAllocationsFromBatch(
 	tx pgx.Tx,
 ) error {
 	for _, line := range b.Allocations {
-		orderlineId, err := r.insertOrderLine(ctx, line.Product.SKU, line.Quantity, b.Reference, tx)
+		orderlineId, err := r.insertOrderLine(
+			ctx, 
+			line.Product.SKU, 
+			line.Quantity, 
+			b.Reference, 
+			tx,
+		)
+		
 		if err != nil {
 			return err
 		}
@@ -122,7 +132,6 @@ func (r *PostgresRepository) insertOrderLine(
 	orderID string,
 	tx pgx.Tx,
 ) (int, error) {
-
 	query := `
 	INSERT INTO order_lines (product_sku, quantity, orderid)
 	VALUES ($1, $2, $3)
@@ -162,7 +171,6 @@ func (r *PostgresRepository) GetBatchByReference(
 	ctx context.Context,
 	ref string,
 ) (*domain.Batch, error) {
-
 	batch, err := r.getBatchByReference(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -205,7 +213,6 @@ func (r *PostgresRepository) addOrderLinesAndAllocationsToBatch(
 	ctx context.Context,
 	b *domain.Batch,
 ) error {
-
 	query := `
 	SELECT o.quantity, o.product_sku, o.orderid
 	FROM order_lines o
@@ -233,7 +240,6 @@ func (r *PostgresRepository) addOrderLinesAndAllocationsToBatch(
 			Quantity: quantity,
 			OrderId:  orderid,
 		})
-
 		if err != nil {
 			return err
 		}
@@ -278,7 +284,6 @@ func (r *PostgresRepository) GetBatchBySku(
 	ctx context.Context,
 	sku string,
 ) (*domain.Batch, error) {
-
 	batch, err := r.getBatchBySku(ctx, sku)
 	if err != nil {
 		return nil, err
@@ -296,7 +301,6 @@ func (r *PostgresRepository) getBatchBySku(
 	ctx context.Context,
 	sku string,
 ) (*domain.Batch, error) {
-
 	query := `
 	SELECT b.reference, b.product_sku, b.purchased_quantity, b.eta
 	FROM batches b
@@ -417,7 +421,6 @@ func (r *PostgresRepository) insertOrUpdateOrderLine(
 		al.Quantity,
 		al.OrderId).
 		Scan(&orderlineID)
-
 	if err != nil {
 		return 0, err
 	}
