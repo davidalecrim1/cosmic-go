@@ -2,14 +2,19 @@ package handler
 
 import (
 	"context"
-	"cosmic-go/internal/domain"
-	"cosmic-go/internal/service"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"time"
+
+	"cosmic-go/internal/domain"
+	"cosmic-go/internal/service"
+
+	"github.com/go-playground/validator/v10"
 )
+
+var defaultRequestTimeout = time.Second * 30
 
 type Handler struct {
 	svc *service.Service
@@ -21,10 +26,6 @@ func NewHandler(svc *service.Service) *Handler {
 	}
 }
 
-var (
-	defaultRequestTimeout = time.Second * 30
-)
-
 func (h *Handler) Allocate(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
@@ -34,6 +35,13 @@ func (h *Handler) Allocate(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(reqBody); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Println("failed to decode allocation request: ", err)
+		return
+	}
+
+	validator := validator.New()
+	if err := validator.Struct(reqBody); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Println("failed to validate add batch request: ", err)
 		return
 	}
 
@@ -77,20 +85,6 @@ func (h *Handler) Allocate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type AllocationRequest struct {
-	OrderID  string `json:"orderid"`
-	SKU      string `json:"sku"`
-	Quantity int    `json:"quantity"`
-}
-
-type AllocationResponse struct {
-	BatchRef string `json:"batchref"`
-}
-
-type BadRequestResponse struct {
-	Message string `json:"message"`
-}
-
 func (h *Handler) Deallocate(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
@@ -100,6 +94,13 @@ func (h *Handler) Deallocate(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(reqBody); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Println("failed to decode deallocation request: ", err)
+		return
+	}
+
+	validator := validator.New()
+	if err := validator.Struct(reqBody); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Println("failed to validate add batch request: ", err)
 		return
 	}
 
