@@ -2,15 +2,15 @@ package service
 
 import (
 	"context"
-	"cosmic-go/internal/domain"
 	"errors"
 	"testing"
+
+	"cosmic-go/internal/domain"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestService(t *testing.T) {
-
 	t.Run("allocate batch",
 		func(t *testing.T) {
 			ctx := context.Background()
@@ -18,8 +18,10 @@ func TestService(t *testing.T) {
 			product := domain.Product{SKU: "SMALL-TABLE"}
 			batch := domain.NewBatchWithoutETA("batch-001", product, 100)
 
-			repo := NewFakeRepositoryWithBatch([]domain.Batch{*batch})
+			repo := NewFakeRepository()
 			svc := NewService(repo)
+			err := svc.AddBatch(ctx, batch)
+			assert.NoError(t, err)
 
 			line := &domain.OrderLine{
 				Product:  product,
@@ -38,15 +40,17 @@ func TestService(t *testing.T) {
 			product := domain.Product{SKU: "SMALL-TABLE"}
 			batch := domain.NewBatchWithoutETA("batch-001", product, 100)
 
-			repo := NewFakeRepositoryWithBatch([]domain.Batch{*batch})
+			repo := NewFakeRepository()
 			svc := NewService(repo)
+			err := svc.AddBatch(ctx, batch)
+			assert.NoError(t, err)
 
 			line := &domain.OrderLine{
 				Product:  domain.Product{SKU: "ANOTHER-SKU"},
 				Quantity: 10,
 			}
 
-			_, err := svc.Allocate(ctx, line)
+			_, err = svc.Allocate(ctx, line)
 			assert.Error(t, err, ErrInvalidSku)
 		})
 
@@ -87,11 +91,13 @@ func TestService(t *testing.T) {
 				},
 			}
 
-			repo := NewFakeRepositoryWithBatch([]domain.Batch{*batch})
+			repo := NewFakeRepository()
 			svc := NewService(repo)
+			err := svc.AddBatch(ctx, batch)
+			assert.NoError(t, err)
 
 			invalidProductSKU := "INVALID_SKU"
-			err := svc.Deallocate(ctx, orderID, invalidProductSKU)
+			err = svc.Deallocate(ctx, orderID, invalidProductSKU)
 			assert.ErrorIs(t, err, ErrInvalidSku)
 
 			_, ok := batch.Allocations[product.SKU]
@@ -114,11 +120,13 @@ func TestService(t *testing.T) {
 				},
 			}
 
-			repo := NewFakeRepositoryWithBatch([]domain.Batch{*batch})
+			repo := NewFakeRepository()
 			svc := NewService(repo)
+			err := svc.AddBatch(ctx, batch)
+			assert.NoError(t, err)
 
 			invalidOrderId := "INVALID_ORDERID"
-			err := svc.Deallocate(ctx, invalidOrderId, product.SKU)
+			err = svc.Deallocate(ctx, invalidOrderId, product.SKU)
 			assert.ErrorIs(t, err, ErrInvalidOrderID)
 
 			_, ok := batch.Allocations[product.SKU]
@@ -141,10 +149,13 @@ func TestService(t *testing.T) {
 				},
 			}
 
-			repo := NewFakeRepositoryWithBatch([]domain.Batch{*batch})
+			repo := NewFakeRepository()
 			svc := NewService(repo)
 
-			err := svc.Deallocate(ctx, orderID, product.SKU)
+			err := svc.AddBatch(ctx, batch)
+			assert.NoError(t, err)
+
+			err = svc.Deallocate(ctx, orderID, product.SKU)
 			assert.NoError(t, err)
 
 			_, ok := batch.Allocations[product.SKU]
@@ -160,18 +171,6 @@ func NewFakeRepository() *FakeRepository {
 	return &FakeRepository{
 		batches: make(map[string]*domain.Batch),
 	}
-}
-
-func NewFakeRepositoryWithBatch(batches []domain.Batch) *FakeRepository {
-	repo := &FakeRepository{
-		batches: make(map[string]*domain.Batch),
-	}
-
-	for _, batch := range batches {
-		repo.batches[batch.Reference] = &batch
-	}
-
-	return repo
 }
 
 func (r *FakeRepository) AddBatch(_ context.Context, batch *domain.Batch) error {
