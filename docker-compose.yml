@@ -12,7 +12,7 @@ services:
       - default
   pgadmin-ui:
     image: dpage/pgadmin4
-    container_name: pgadmin-ui
+    container_name: pgadmin-cosmic-ui
     environment:
       PGADMIN_DEFAULT_EMAIL: "david.socer@hotmail.com"
       PGADMIN_DEFAULT_PASSWORD: "5J4JgqSffm8f7rE"
