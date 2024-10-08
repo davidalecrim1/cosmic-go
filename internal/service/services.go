@@ -2,8 +2,9 @@ package service
 
 import (
 	"context"
-	"cosmic-go/internal/domain"
 	"errors"
+
+	"cosmic-go/internal/domain"
 )
 
 var (
@@ -59,7 +60,8 @@ func (s *Service) Deallocate(ctx context.Context, orderid string, sku string) er
 		return ErrInvalidSku
 	}
 
-	updatedBatch := *existingBatch // coping it
+	// coping it, here we don't need a hard copy
+	updatedBatch := *existingBatch
 	orderline, err := s.getOrderLineAllocatedFromBatch(orderid, existingBatch)
 	if err != nil {
 		return err
