@@ -127,7 +127,38 @@ func (h *Handler) Deallocate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-type DeallocateRequest struct {
-	OrderID string `json:"orderid"`
-	SKU     string `json:"sku"`
+func (h *Handler) AddBatch(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	defer cancel()
+
+	reqBody := &AddBatchRequest{}
+
+	if err := json.NewDecoder(r.Body).Decode(reqBody); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Println("failed to decode add batch request: ", err)
+		return
+	}
+
+	validator := validator.New()
+	if err := validator.Struct(reqBody); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Println("failed to validate add batch request: ", err)
+		return
+	}
+
+	batch := domain.NewBatch(
+		reqBody.Reference,
+		domain.Product(reqBody.Product),
+		reqBody.PurchasedQuantity,
+		reqBody.ETA,
+	)
+
+	err := h.svc.AddBatch(ctx, batch)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Println("unexpected error: ", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
 }
