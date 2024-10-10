@@ -4,25 +4,26 @@ package e2e
 
 import (
 	"bytes"
-	"cosmic-go/internal/bootstrap"
-	"cosmic-go/internal/domain"
-	"cosmic-go/internal/handler"
-	"cosmic-go/pkg/env"
-	"cosmic-go/test/helpers"
 	"encoding/json"
 	"io"
 	"net/http"
 	"testing"
 	"time"
 
+	"cosmic-go/internal/bootstrap"
+	"cosmic-go/internal/domain"
+	"cosmic-go/internal/handler"
+	"cosmic-go/pkg/env"
+	"cosmic-go/test/helpers"
+
 	"github.com/stretchr/testify/assert"
 )
 
-func TestE2E(t *testing.T) {
+func TestE2E_Allocation(t *testing.T) {
 	db := bootstrap.InitializeDatabase()
 	defer db.Close()
 
-	t.Run("api returns allocation with 201",
+	t.Run("api valid allocation returns 201",
 		func(t *testing.T) {
 			orderId := "order-001"
 			product := domain.Product{SKU: "SMALL-TABLE"}
@@ -48,7 +49,7 @@ func TestE2E(t *testing.T) {
 			})
 			assert.NoError(t, err)
 
-			apiEndpoint := getApiEndpointHelper(t)
+			apiEndpoint := getApiEndpoint(t)
 			resp, err := http.Post(
 				apiEndpoint+"/allocate",
 				"application/json",
@@ -75,10 +76,10 @@ func TestE2E(t *testing.T) {
 			})
 		})
 
-	t.Run("api returns 400 and error message",
+	t.Run("api invalid allocation returns 400 and error message",
 		func(t *testing.T) {
 			unknownSku, unknownOrderId, quantity := "UNKNOWN-SKU-001", "unknown-order-001", 10
-			apiEndpoint := getApiEndpointHelper(t)
+			apiEndpoint := getApiEndpoint(t)
 
 			requestBody, err := json.Marshal(map[string]any{
 				"orderid":  unknownOrderId,
@@ -108,6 +109,11 @@ func TestE2E(t *testing.T) {
 				helpers.CleanUpRepositoryHelper(db)
 			})
 		})
+}
+
+func TestE2E_Deallocation(t *testing.T) {
+	db := bootstrap.InitializeDatabase()
+	defer db.Close()
 
 	t.Run("api returns 200 for deallocate",
 		func(t *testing.T) {
@@ -130,7 +136,7 @@ func TestE2E(t *testing.T) {
 				helpers.WithAllocation(orderLine.OrderId, batch.Reference),
 			)
 
-			apiEndpoint := getApiEndpointHelper(t)
+			apiEndpoint := getApiEndpoint(t)
 			requestBody, err := json.Marshal(map[string]any{
 				"orderid": orderLine.OrderId,
 				"sku":     product.SKU,
@@ -179,7 +185,7 @@ func TestE2E(t *testing.T) {
 
 			assert.NoError(t, err)
 
-			apiEndpoint := getApiEndpointHelper(t)
+			apiEndpoint := getApiEndpoint(t)
 			resp, err := http.Post(apiEndpoint+"/deallocate",
 				"application/json",
 				bytes.NewBuffer(requestBody),
@@ -195,7 +201,69 @@ func TestE2E(t *testing.T) {
 		})
 }
 
-func getApiEndpointHelper(t *testing.T) string {
+func TestE2E_AddBatch(t *testing.T) {
+	db := bootstrap.InitializeDatabase()
+	defer db.Close()
+
+	t.Run("api returns 201 for adding a new batch WITH eta", func(t *testing.T) {
+		product := domain.Product{SKU: "SMALL-TABLE"}
+		batch := domain.NewBatch("batch-001", product, 100, time.Now())
+		validRequestBody := map[string]any{
+			"reference":          batch.Reference,
+			"product":            product,
+			"purchased_quantity": batch.PurchasedQuantity,
+		}
+		addBatch(t, validRequestBody, http.StatusCreated)
+
+		t.Cleanup(func() {
+			helpers.CleanUpRepositoryHelper(db)
+		})
+	})
+
+	t.Run("api returns 201 for adding a new batch WITHOUT eta", func(t *testing.T) {
+		product := domain.Product{SKU: "SMALL-TABLE"}
+		batch := domain.NewBatchWithoutETA("batch-001", product, 100)
+		validRequestBody := map[string]any{
+			"reference":          batch.Reference,
+			"product":            product,
+			"purchased_quantity": batch.PurchasedQuantity,
+		}
+		addBatch(t, validRequestBody, http.StatusCreated)
+
+		t.Cleanup(func() {
+			helpers.CleanUpRepositoryHelper(db)
+		})
+	})
+
+	t.Run("api returns 400 for adding a batch with invalid request", func(t *testing.T) {
+		invalidRequestBody := map[string]any{
+			"reference":          "",                                 // Invalid reference
+			"product":            domain.Product{SKU: "INVALID-SKU"}, // Invalid product SKU
+			"purchased_quantity": -1,                                 // Invalid quantity
+		}
+		addBatch(t, invalidRequestBody, http.StatusBadRequest)
+	})
+}
+
+func getApiEndpoint(t *testing.T) string {
 	t.Helper()
 	return env.GetEnvOrSetDefault("API_URL", "http://localhost:8080")
+}
+
+func addBatch(
+	t *testing.T,
+	requestBody map[string]any,
+	expectedStatus int,
+) {
+	apiEndpoint := getApiEndpoint(t)
+	body, err := json.Marshal(requestBody)
+	assert.NoError(t, err)
+
+	resp, err := http.Post(apiEndpoint+"/batches",
+		"application/json",
+		bytes.NewBuffer(body),
+	)
+	assert.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, expectedStatus, resp.StatusCode)
 }
