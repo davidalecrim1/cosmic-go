@@ -2,8 +2,9 @@ package helpers
 
 import (
 	"context"
-	"cosmic-go/internal/domain"
 	"testing"
+
+	"cosmic-go/internal/domain"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -85,7 +86,7 @@ func (b *TestBatchData) createBatches(t *testing.T, ctx context.Context, tx pgx.
 	`
 
 	for _, batch := range b.Batches {
-		_, err := tx.Exec(ctx, query, batch.Reference, batch.Product.SKU, batch.PurchasedQuantity, batch.ETA)
+		_, err := tx.Exec(ctx, query, batch.Reference, batch.Product.SKU, batch.PurchasedQuantity, batch.GetETA())
 		if err != nil {
 			t.Fatal("failed to insert batch: ", err)
 		}

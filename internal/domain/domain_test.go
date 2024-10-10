@@ -33,7 +33,8 @@ func TestDomainModel(t *testing.T) {
 
 	t.Run("cannot allocate if skus do not match",
 		func(t *testing.T) {
-			batch := NewBatch("batch-001", Product{"ELEC-TRUMPET"}, 10, time.Now())
+			eta := time.Now()
+			batch := NewBatch("batch-001", Product{"ELEC-TRUMPET"}, 10, &eta)
 			line := &OrderLine{Product{"SMALL-TABLE"}, 10, "order-001"}
 			err := batch.Allocate(line)
 			assert.Error(t, err)
@@ -41,7 +42,8 @@ func TestDomainModel(t *testing.T) {
 
 	t.Run("can only deallocate allocated order lines",
 		func(t *testing.T) {
-			batch := NewBatch("batch-001", Product{"ELEC-TRUMPET"}, 10, time.Now())
+			eta := time.Now()
+			batch := NewBatch("batch-001", Product{"ELEC-TRUMPET"}, 10, &eta)
 			unallocatedLine := &OrderLine{Product{"SMALL-TABLE"}, 1, "order-001"}
 			err := batch.Deallocate(unallocatedLine)
 			assert.Error(t, err)
@@ -60,10 +62,11 @@ func TestDomainModel(t *testing.T) {
 			assert.Equal(t, 8, batch.AvailableQuantity())
 		})
 
-	t.Run("test prefers current stock batches to shipments",
+	t.Run("prefers current stock batches to shipments",
 		func(t *testing.T) {
 			inStockBatch := NewBatchWithoutETA("in_stock_batch", Product{"RETRO-CLOCK"}, 100)
-			shipmentBatch := NewBatch("shipment_batch", Product{"RETRO-CLOCK"}, 100, time.Now().Add(time.Hour*24))
+			eta := time.Now().Add(time.Hour * 24)
+			shipmentBatch := NewBatch("shipment_batch", Product{"RETRO-CLOCK"}, 100, &eta)
 			line := &OrderLine{Product{"RETRO-CLOCK"}, 10, "order-001"}
 
 			_, err := Allocate(line, []*Batch{inStockBatch, shipmentBatch})
@@ -74,9 +77,14 @@ func TestDomainModel(t *testing.T) {
 
 	t.Run("prefers earliest batch to later batches",
 		func(t *testing.T) {
-			earliest := NewBatch("earliest_batch", Product{"RETRO-CLOCK"}, 100, time.Now())
-			medium := NewBatch("medium_batch", Product{"RETRO-CLOCK"}, 100, time.Now().Add(time.Hour*24))
-			later := NewBatch("later_batch", Product{"RETRO-CLOCK"}, 100, time.Now().Add(time.Hour*48))
+			earlistEta := time.Now()
+			earliest := NewBatch("earliest_batch", Product{"RETRO-CLOCK"}, 100, &earlistEta)
+
+			mediumEta := time.Now().Add(time.Hour * 24)
+			medium := NewBatch("medium_batch", Product{"RETRO-CLOCK"}, 100, &mediumEta)
+
+			laterEta := time.Now().Add(time.Hour * 48)
+			later := NewBatch("later_batch", Product{"RETRO-CLOCK"}, 100, &laterEta)
 
 			line := &OrderLine{Product{"RETRO-CLOCK"}, 10, "order-001"}
 
@@ -101,7 +109,8 @@ func TestDomainModel(t *testing.T) {
 
 func createBatchAndOrderLine(t *testing.T, sku string, batchQty, lineQty int) (*Batch, *OrderLine) {
 	t.Helper()
-	batch := NewBatch("batch-001", Product{sku}, batchQty, time.Now())
+	eta := time.Now()
+	batch := NewBatch("batch-001", Product{sku}, batchQty, &eta)
 	line := OrderLine{Product{sku}, lineQty, "order-001"}
 	return batch, &line
 }

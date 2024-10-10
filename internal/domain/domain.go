@@ -16,27 +16,29 @@ type Product struct {
 	SKU string
 }
 
+type OrderID string
+
 type OrderLine struct {
 	Product  Product
 	Quantity int
-	OrderId  string
+	OrderId  OrderID
 }
 
 type Batch struct {
 	Reference         string
 	Product           Product
 	PurchasedQuantity int
-	ETA               time.Time
-	Allocations       map[string]OrderLine
+	eta               *time.Time
+	Allocations       map[OrderID]OrderLine
 }
 
-func NewBatch(ref string, product Product, quantity int, eta time.Time) *Batch {
+func NewBatch(ref string, product Product, quantity int, eta *time.Time) *Batch {
 	return &Batch{
 		Reference:         ref,
 		Product:           product,
 		PurchasedQuantity: quantity,
-		ETA:               eta,
-		Allocations:       make(map[string]OrderLine),
+		eta:               eta,
+		Allocations:       make(map[OrderID]OrderLine),
 	}
 }
 
@@ -45,13 +47,25 @@ func NewBatchWithoutETA(ref string, product Product, quantity int) *Batch {
 		Reference:         ref,
 		Product:           product,
 		PurchasedQuantity: quantity,
-		Allocations:       make(map[string]OrderLine),
+		Allocations:       make(map[OrderID]OrderLine),
 	}
+}
+
+func (b *Batch) GetETA() *time.Time {
+	return b.eta
+}
+
+func (b *Batch) SetETA(value *time.Time) {
+	if value != nil {
+		b.eta = value
+	}
+
+	b.eta = nil
 }
 
 func (b *Batch) Allocate(line *OrderLine) error {
 	if b.Allocations == nil {
-		b.Allocations = make(map[string]OrderLine)
+		b.Allocations = make(map[OrderID]OrderLine)
 	}
 
 	if b.Product.SKU != line.Product.SKU {
@@ -62,7 +76,7 @@ func (b *Batch) Allocate(line *OrderLine) error {
 		return ErrOrderLinesOverBatch
 	}
 
-	b.Allocations[line.Product.SKU] = *line
+	b.Allocations[line.OrderId] = *line
 	return nil
 }
 
@@ -75,7 +89,7 @@ func (b *Batch) Deallocate(line *OrderLine) error {
 		return ErrOrderLinesOverBatch
 	}
 
-	delete(b.Allocations, line.Product.SKU)
+	delete(b.Allocations, line.OrderId)
 	return nil
 }
 
@@ -90,7 +104,16 @@ func (b *Batch) AvailableQuantity() int {
 
 func Allocate(ol *OrderLine, bt []*Batch) (reference string, err error) {
 	sortBasedOnEarliestETA := func(i, j int) bool {
-		return bt[i].ETA.Before(bt[j].ETA)
+		// no ETA (nil) is the earliest
+		if bt[i].eta == nil {
+			return true
+		}
+
+		if bt[j].eta == nil {
+			return false
+		}
+
+		return bt[i].eta.Before(*bt[j].eta)
 	}
 
 	sort.Slice(bt, sortBasedOnEarliestETA)

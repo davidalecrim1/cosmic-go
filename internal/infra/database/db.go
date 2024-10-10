@@ -1,10 +1,11 @@
-package bootstrap
+package database
 
 import (
 	"context"
-	"cosmic-go/pkg/env"
 	"fmt"
 	"log"
+
+	"cosmic-go/pkg/env"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -39,7 +40,7 @@ func initializeSchema(db *pgxpool.Pool) {
 		reference TEXT PRIMARY KEY NOT NULL, 
 		product_sku TEXT REFERENCES products(sku),
 		purchased_quantity INT NOT NULL,
-		eta DATE
+		eta TIMESTAMPTZ
 		);
 
 	CREATE TABLE IF NOT EXISTS order_lines (

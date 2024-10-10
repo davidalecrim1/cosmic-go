@@ -80,11 +80,11 @@ func TestService(t *testing.T) {
 			ctx := context.Background()
 
 			product := domain.Product{SKU: "SMALL-TABLE"}
-			orderID := "order-001"
+			var orderID domain.OrderID = "order-001"
 
 			batch := domain.NewBatchWithoutETA("batch-001", product, 100)
-			batch.Allocations = map[string]domain.OrderLine{
-				product.SKU: {
+			batch.Allocations = map[domain.OrderID]domain.OrderLine{
+				orderID: {
 					Product:  product,
 					Quantity: 10,
 					OrderId:  orderID,
@@ -97,10 +97,10 @@ func TestService(t *testing.T) {
 			assert.NoError(t, err)
 
 			invalidProductSKU := "INVALID_SKU"
-			err = svc.Deallocate(ctx, orderID, invalidProductSKU)
+			err = svc.Deallocate(ctx, string(orderID), invalidProductSKU)
 			assert.ErrorIs(t, err, ErrInvalidSku)
 
-			_, ok := batch.Allocations[product.SKU]
+			_, ok := batch.Allocations[orderID]
 			assert.True(t, ok)
 		})
 
@@ -109,11 +109,11 @@ func TestService(t *testing.T) {
 			ctx := context.Background()
 
 			product := domain.Product{SKU: "SMALL-TABLE"}
-			orderID := "order-001"
+			var orderID domain.OrderID = "order-001"
 
 			batch := domain.NewBatchWithoutETA("batch-001", product, 100)
-			batch.Allocations = map[string]domain.OrderLine{
-				product.SKU: {
+			batch.Allocations = map[domain.OrderID]domain.OrderLine{
+				orderID: {
 					Product:  product,
 					Quantity: 10,
 					OrderId:  orderID,
@@ -129,7 +129,7 @@ func TestService(t *testing.T) {
 			err = svc.Deallocate(ctx, invalidOrderId, product.SKU)
 			assert.ErrorIs(t, err, ErrInvalidOrderID)
 
-			_, ok := batch.Allocations[product.SKU]
+			_, ok := batch.Allocations[orderID]
 			assert.True(t, ok)
 		})
 
@@ -138,11 +138,11 @@ func TestService(t *testing.T) {
 			ctx := context.Background()
 
 			product := domain.Product{SKU: "SMALL-TABLE"}
-			orderID := "order-001"
+			var orderID domain.OrderID = "order-001"
 
 			batch := domain.NewBatchWithoutETA("batch-001", product, 100)
-			batch.Allocations = map[string]domain.OrderLine{
-				product.SKU: {
+			batch.Allocations = map[domain.OrderID]domain.OrderLine{
+				orderID: {
 					Product:  product,
 					Quantity: 10,
 					OrderId:  orderID,
@@ -155,10 +155,10 @@ func TestService(t *testing.T) {
 			err := svc.AddBatch(ctx, batch)
 			assert.NoError(t, err)
 
-			err = svc.Deallocate(ctx, orderID, product.SKU)
+			err = svc.Deallocate(ctx, string(orderID), product.SKU)
 			assert.NoError(t, err)
 
-			_, ok := batch.Allocations[product.SKU]
+			_, ok := batch.Allocations[orderID]
 			assert.False(t, ok)
 		})
 }

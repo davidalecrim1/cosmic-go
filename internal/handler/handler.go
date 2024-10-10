@@ -49,7 +49,7 @@ func (h *Handler) Allocate(w http.ResponseWriter, r *http.Request) {
 	line := &domain.OrderLine{
 		Product:  product,
 		Quantity: reqBody.Quantity,
-		OrderId:  reqBody.OrderID,
+		OrderId:  domain.OrderID(reqBody.OrderID),
 	}
 
 	batchref, err := h.svc.Allocate(ctx, line)
@@ -150,7 +150,7 @@ func (h *Handler) AddBatch(w http.ResponseWriter, r *http.Request) {
 		reqBody.Reference,
 		domain.Product(reqBody.Product),
 		reqBody.PurchasedQuantity,
-		reqBody.ETA,
+		&reqBody.ETA,
 	)
 
 	err := h.svc.AddBatch(ctx, batch)

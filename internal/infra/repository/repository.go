@@ -2,9 +2,12 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"log"
+	"time"
 
 	"cosmic-go/internal/domain"
+	"cosmic-go/internal/service"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,7 +22,7 @@ func NewPostgresRepository(db *pgxpool.Pool) *PostgresRepository {
 }
 
 func (r *PostgresRepository) AddBatch(
-	ctx context.Context, 
+	ctx context.Context,
 	b *domain.Batch,
 ) error {
 	tx, err := r.db.Begin(ctx)
@@ -94,7 +97,7 @@ func (r *PostgresRepository) insertBatch(
 		b.Reference,
 		string(b.Product.SKU),
 		b.PurchasedQuantity,
-		b.ETA)
+		b.GetETA())
 
 	return err
 }
@@ -106,18 +109,22 @@ func (r *PostgresRepository) insertOrderLineAndAllocationsFromBatch(
 ) error {
 	for _, line := range b.Allocations {
 		orderlineId, err := r.insertOrderLine(
-			ctx, 
-			line.Product.SKU, 
-			line.Quantity, 
-			b.Reference, 
+			ctx,
+			line.Product.SKU,
+			line.Quantity,
+			line.OrderId,
 			tx,
 		)
-		
 		if err != nil {
 			return err
 		}
 
-		err = r.insertAllocation(ctx, b.Reference, orderlineId, tx)
+		err = r.insertAllocation(
+			ctx,
+			b.Reference,
+			orderlineId,
+			tx,
+		)
 		if err != nil {
 			return err
 		}
@@ -129,7 +136,7 @@ func (r *PostgresRepository) insertOrderLine(
 	ctx context.Context,
 	sku string,
 	quantity int,
-	orderID string,
+	orderID domain.OrderID,
 	tx pgx.Tx,
 ) (int, error) {
 	query := `
@@ -159,10 +166,12 @@ func (r *PostgresRepository) insertAllocation(
 	INSERT INTO allocations (batch_reference, orderline_id)
 	VALUES ($1, $2);
 	`
-	_, err := tx.Exec(ctx,
+	_, err := tx.Exec(
+		ctx,
 		query,
 		ref,
-		orderlineId)
+		orderlineId,
+	)
 
 	return err
 }
@@ -194,19 +203,8 @@ func (r *PostgresRepository) getBatchByReference(
 	WHERE b.reference = $1;
 	`
 
-	batch := domain.Batch{}
-	err := r.db.QueryRow(
-		ctx,
-		query,
-		ref,
-	).Scan(
-		&batch.Reference,
-		&batch.Product.SKU,
-		&batch.PurchasedQuantity,
-		&batch.ETA,
-	)
-
-	return &batch, err
+	row := r.db.QueryRow(ctx, query, ref)
+	return r.mapRowToBatch(row)
 }
 
 func (r *PostgresRepository) addOrderLinesAndAllocationsToBatch(
@@ -228,7 +226,7 @@ func (r *PostgresRepository) addOrderLinesAndAllocationsToBatch(
 	for lines.Next() {
 		var quantity int
 		var productSku string
-		var orderid string
+		var orderid domain.OrderID
 
 		err = lines.Scan(&quantity, &productSku, &orderid)
 		if err != nil {
@@ -259,25 +257,8 @@ func (r *PostgresRepository) ListBatches(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var batches []*domain.Batch
-
-	for rows.Next() {
-		var batch domain.Batch
-
-		if err := rows.Scan(
-			&batch.Reference,
-			&batch.Product.SKU,
-			&batch.PurchasedQuantity,
-			&batch.ETA); err != nil {
-			return nil, err
-		}
-
-		batches = append(batches, &batch)
-	}
-
-	return batches, nil
+	return r.mapRowsToBatches(rows)
 }
 
 func (r *PostgresRepository) GetBatchBySku(
@@ -306,22 +287,14 @@ func (r *PostgresRepository) getBatchBySku(
 	FROM batches b
 	WHERE b.product_sku = $1;
 	`
-	batch := &domain.Batch{}
-	err := r.db.QueryRow(
+
+	row := r.db.QueryRow(
 		ctx,
 		query,
 		sku,
-	).Scan(
-		&batch.Reference,
-		&batch.Product.SKU,
-		&batch.PurchasedQuantity,
-		&batch.ETA,
 	)
-	if err != nil {
-		return nil, err
-	}
 
-	return batch, err
+	return r.mapRowToBatch(row)
 }
 
 func (r *PostgresRepository) UpdateBatch(
@@ -369,7 +342,7 @@ func (r *PostgresRepository) updateBatch(
 	SET purchased_quantity = $1, eta = $2
 	WHERE reference = $3;
 	`
-	_, err := tx.Exec(ctx, query, b.PurchasedQuantity, b.ETA, b.Reference)
+	_, err := tx.Exec(ctx, query, b.PurchasedQuantity, b.GetETA(), b.Reference)
 	return err
 }
 
@@ -481,6 +454,71 @@ func (r *PostgresRepository) orderLineDeallocated(
 	al domain.OrderLine,
 	updatedB *domain.Batch,
 ) bool {
-	_, ok := updatedB.Allocations[al.Product.SKU]
+	_, ok := updatedB.Allocations[al.OrderId]
 	return ok
+}
+
+func (r *PostgresRepository) mapRowsToBatches(
+	rows pgx.Rows,
+) ([]*domain.Batch, error) {
+	var batches []*domain.Batch
+	defer rows.Close()
+
+	for rows.Next() {
+		var reference string
+		var sku string
+		var quantity int
+		var eta *time.Time
+
+		if err := rows.Scan(
+			&reference,
+			&sku,
+			&quantity,
+			&eta,
+		); err != nil {
+			return nil, err
+		}
+
+		batch := domain.NewBatch(
+			reference,
+			domain.Product{SKU: sku},
+			quantity,
+			eta,
+		)
+
+		batches = append(batches, batch)
+	}
+
+	return batches, nil
+}
+
+func (r *PostgresRepository) mapRowToBatch(
+	row pgx.Row,
+) (*domain.Batch, error) {
+	var reference string
+	var sku string
+	var quantity int
+	var eta *time.Time
+
+	err := row.Scan(
+		&reference,
+		&sku,
+		&quantity,
+		&eta,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, service.ErrBatchNotFound
+	} else if err != nil {
+		return nil, err
+	}
+
+	batch := domain.NewBatch(
+		reference,
+		domain.Product{SKU: sku},
+		quantity,
+		eta,
+	)
+
+	return batch, nil
 }

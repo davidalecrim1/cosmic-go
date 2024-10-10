@@ -10,6 +10,7 @@ import (
 var (
 	ErrInvalidSku     = errors.New("invalid sku")
 	ErrInvalidOrderID = errors.New("invalid order id")
+	ErrBatchNotFound  = errors.New("batch not found")
 )
 
 type Service struct {
@@ -85,7 +86,7 @@ func (s *Service) getOrderLineAllocatedFromBatch(
 	b *domain.Batch,
 ) (*domain.OrderLine, error) {
 	for _, al := range b.Allocations {
-		if al.OrderId == orderid {
+		if string(al.OrderId) == orderid {
 			return &al, nil
 		}
 	}
