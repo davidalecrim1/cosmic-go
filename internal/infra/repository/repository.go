@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"errors"
-	"log"
 	"time"
 
 	"cosmic-go/internal/domain"
@@ -21,48 +20,57 @@ func NewPostgresRepository(db *pgxpool.Pool) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
+func (r *PostgresRepository) runWithTransaction(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	fn func(tx pgx.Tx) error,
+) error {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = fn(tx)
+	if err == nil {
+		return tx.Commit(ctx)
+	}
+
+	rollbackErr := tx.Rollback(ctx)
+	if rollbackErr != nil {
+		return errors.Join(err, rollbackErr)
+	}
+
+	return err
+}
+
 func (r *PostgresRepository) AddBatch(
 	ctx context.Context,
 	b *domain.Batch,
 ) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err != nil {
-			if rbErr := tx.Rollback(ctx); rbErr != nil {
-				log.Printf("transaction rollback failed: %v", rbErr)
+	return r.runWithTransaction(ctx, r.db,
+		func(tx pgx.Tx) error {
+			err := r.insertProduct(ctx, b.Product.SKU, tx)
+			if err != nil {
+				return err
 			}
-		}
-	}()
 
-	err = r.insertProduct(ctx, b.Product.SKU, tx)
-	if err != nil {
-		return err
-	}
+			err = r.insertBatch(ctx, b, tx)
+			if err != nil {
+				return err
+			}
 
-	err = r.insertBatch(ctx, b, tx)
-	if err != nil {
-		return err
-	}
+			err = r.insertOrderLineAndAllocationsFromBatch(
+				ctx,
+				b,
+				tx,
+			)
+			if err != nil {
+				return err
+			}
 
-	err = r.insertOrderLineAndAllocationsFromBatch(
-		ctx,
-		b,
-		tx,
+			return nil
+		},
 	)
-	if err != nil {
-		return err
-	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (r *PostgresRepository) insertProduct(
@@ -302,34 +310,23 @@ func (r *PostgresRepository) UpdateBatch(
 	existingB *domain.Batch,
 	updatedB *domain.Batch,
 ) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err != nil {
-			if rbErr := tx.Rollback(ctx); rbErr != nil {
-				log.Printf("transaction rollback failed: %v", rbErr)
+	return r.runWithTransaction(
+		ctx,
+		r.db,
+		func(tx pgx.Tx) error {
+			err := r.updateBatch(ctx, updatedB, tx)
+			if err != nil {
+				return err
 			}
-		}
-	}()
 
-	err = r.updateBatch(ctx, updatedB, tx)
-	if err != nil {
-		return err
-	}
+			err = r.updateOrderLinesAndAllocationsFromBatch(ctx, existingB, updatedB, tx)
+			if err != nil {
+				return err
+			}
 
-	err = r.updateOrderLinesAndAllocationsFromBatch(ctx, existingB, updatedB, tx)
-	if err != nil {
-		return err
-	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return err
-	}
-	return nil
+			return nil
+		},
+	)
 }
 
 func (r *PostgresRepository) updateBatch(
