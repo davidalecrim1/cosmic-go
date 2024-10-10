@@ -47,29 +47,28 @@ func (r *PostgresRepository) AddBatch(
 	ctx context.Context,
 	b *domain.Batch,
 ) error {
-	return r.runWithTransaction(ctx, r.db,
-		func(tx pgx.Tx) error {
-			err := r.insertProduct(ctx, b.Product.SKU, tx)
-			if err != nil {
-				return err
-			}
+	return r.runWithTransaction(ctx, r.db, func(tx pgx.Tx) error {
+		err := r.insertProduct(ctx, b.Product.SKU, tx)
+		if err != nil {
+			return err
+		}
 
-			err = r.insertBatch(ctx, b, tx)
-			if err != nil {
-				return err
-			}
+		err = r.insertBatch(ctx, b, tx)
+		if err != nil {
+			return err
+		}
 
-			err = r.insertOrderLineAndAllocationsFromBatch(
-				ctx,
-				b,
-				tx,
-			)
-			if err != nil {
-				return err
-			}
+		err = r.insertOrderLineAndAllocationsFromBatch(
+			ctx,
+			b,
+			tx,
+		)
+		if err != nil {
+			return err
+		}
 
-			return nil
-		},
+		return nil
+	},
 	)
 }
 
@@ -310,22 +309,19 @@ func (r *PostgresRepository) UpdateBatch(
 	existingB *domain.Batch,
 	updatedB *domain.Batch,
 ) error {
-	return r.runWithTransaction(
-		ctx,
-		r.db,
-		func(tx pgx.Tx) error {
-			err := r.updateBatch(ctx, updatedB, tx)
-			if err != nil {
-				return err
-			}
+	return r.runWithTransaction(ctx, r.db, func(tx pgx.Tx) error {
+		err := r.updateBatch(ctx, updatedB, tx)
+		if err != nil {
+			return err
+		}
 
-			err = r.updateOrderLinesAndAllocationsFromBatch(ctx, existingB, updatedB, tx)
-			if err != nil {
-				return err
-			}
+		err = r.updateOrderLinesAndAllocationsFromBatch(ctx, existingB, updatedB, tx)
+		if err != nil {
+			return err
+		}
 
-			return nil
-		},
+		return nil
+	},
 	)
 }
 
