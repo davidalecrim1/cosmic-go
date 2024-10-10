@@ -265,3 +265,35 @@ I've decided not to swap the domain structs for primitives given I rather use st
 I could use DTOs, but I do not see why in small software and a language like Go that focus on simplicity.
 
 
+```
+Extreme programming (XP) exhorts us to "listen to the code." When we’re writing tests, we might find that the code is hard to use or notice a code smell. This is a trigger for us to refactor, and to reconsider our design.
+```
+
+I do enjoy this. Remember why to TDD. You are a professional (quoting Uncle Bob from Clean Coder). It's your responsability to ship code to production as you were doing the most important thing in the world.
+
+The E2E tests are great because you have high coverage and make sure large scale changes don't break your software.
+
+```
+Because the tests are written in the domain language, they act as living documentation for our model. A new team member can read these tests to quickly understand how the system works and how the core concepts interrelate.
+
+We often "sketch" new behaviors by writing tests at this level to see how the code might look. When we want to improve the design of the code, though, we will need to replace or delete these tests, because they are tightly coupled to a particular implementation.
+
+Most of the time, when we are adding a new feature or fixing a bug, we don’t need to make extensive changes to the domain model. In these cases, we prefer to write tests against services because of the lower coupling and higher coverage.
+```
+
+This is great for unit tests on the domain.
+
+```
+We still have direct dependencies on the domain in our service-layer tests, because we use domain objects to set up our test data and to invoke our service-layer functions.
+
+To have a service layer that’s fully decoupled from the domain, we need to rewrite its API to work in terms of primitives.
+```
+
+I disagree with this and don't see it making sense in Go. Also, thinking about Clean Code, using the domain objects make the code more readable and expressive. I do like that and believe it's a worth trade off.
+
+
+```
+In general, if you find yourself needing to do domain-layer stuff directly in your service-layer tests, it may be an indication that your service layer is incomplete.
+```
+
+This does seem like a nice tip.
