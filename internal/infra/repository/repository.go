@@ -79,7 +79,8 @@ func (r *PostgresRepository) insertProduct(
 ) error {
 	query := `
 	INSERT INTO products (sku) 
-	VALUES ($1);
+	VALUES ($1)
+	ON CONFLICT (sku) DO NOTHING;
 	`
 	_, err := tx.Exec(
 		ctx,
@@ -371,12 +372,12 @@ func (r *PostgresRepository) insertOrUpdateOrderLine(
 	tx pgx.Tx,
 ) (id int, err error) {
 	query := `
+	WITH existing AS (
+		SELECT id FROM order_lines WHERE product_sku = $1 AND orderid = $3
+	)
 	INSERT INTO order_lines (product_sku, quantity, orderid)
-	VALUES ($1, $2, $3)
-	ON CONFLICT (orderid) DO UPDATE
-	SET product_sku = EXCLUDED.product_sku,
-		quantity = EXCLUDED.quantity,
-		orderid = EXCLUDED.orderid
+	SELECT $1, $2, $3
+	WHERE NOT EXISTS (SELECT 1 FROM existing)
 	RETURNING id;
 	`
 	var orderlineID int
@@ -401,10 +402,13 @@ func (r *PostgresRepository) insertOrUpdateAllocations(
 	tx pgx.Tx,
 ) error {
 	query := `
+	WITH existing AS (
+		SELECT id FROM allocations WHERE orderline_id = $1 AND batch_reference = $2
+	)
+
 	INSERT INTO allocations (orderline_id, batch_reference)
-	VALUES ($1, $2)
-	ON CONFLICT (orderline_id) DO UPDATE
-	SET batch_reference = EXCLUDED.batch_reference;
+	SELECT $1, $2
+	WHERE NOT EXISTS (SELECT 1 FROM existing);
 	`
 	_, err := tx.Exec(ctx, query, orderlineID, batchRef)
 	if err != nil {

@@ -100,7 +100,7 @@ func (h *Handler) Deallocate(w http.ResponseWriter, r *http.Request) {
 	validator := validator.New()
 	if err := validator.Struct(reqBody); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		log.Println("failed to validate add batch request: ", err)
+		log.Println("failed to validate deallocation request: ", err)
 		return
 	}
 

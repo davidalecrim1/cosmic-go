@@ -64,7 +64,7 @@ func TestDomainModel(t *testing.T) {
 
 	t.Run("prefers current stock batches to shipments",
 		func(t *testing.T) {
-			inStockBatch := NewBatchWithoutETA("in_stock_batch", Product{"RETRO-CLOCK"}, 100)
+			inStockBatch := NewBatch("in_stock_batch", Product{"RETRO-CLOCK"}, 100, nil)
 			eta := time.Now().Add(time.Hour * 24)
 			shipmentBatch := NewBatch("shipment_batch", Product{"RETRO-CLOCK"}, 100, &eta)
 			line := &OrderLine{Product{"RETRO-CLOCK"}, 10, "order-001"}

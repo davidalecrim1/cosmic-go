@@ -39,7 +39,26 @@ func (s *Service) Allocate(ctx context.Context, ol *domain.OrderLine) (string, e
 		return "", ErrInvalidSku
 	}
 
-	return domain.Allocate(ol, batches)
+	updatedBatchRef, err := domain.Allocate(ol, batches)
+	if err != nil {
+		return "", err
+	}
+
+	existingBatch, err := s.repo.GetBatchByReference(ctx, updatedBatchRef)
+	if err != nil {
+		return "", err
+	}
+
+	for _, batch := range batches {
+		if batch.Reference == updatedBatchRef {
+			err = s.repo.UpdateBatch(ctx, existingBatch, batch)
+			if err != nil {
+				return "", err
+			}
+		}
+	}
+
+	return updatedBatchRef, nil
 }
 
 func isValidSku(sku string, batches []*domain.Batch) bool {

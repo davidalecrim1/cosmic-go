@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -15,15 +16,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRepository(t *testing.T) {
-	db, repo := newRepositoryHelper()
-	defer db.Close()
+var (
+	db   *pgxpool.Pool
+	repo *PostgresRepository
+)
 
+func TestMain(m *testing.M) {
+	db = database.InitializeDatabase()
+	repo = NewPostgresRepository(db)
+
+	code := m.Run()
+	os.Exit(code)
+}
+
+func TestRepository(t *testing.T) {
 	t.Run("add a batch",
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			batch := domain.NewBatchWithoutETA("batch-001", domain.Product{SKU: "SMALL-TABLE"}, 10)
+			batch := domain.NewBatch("batch-001", domain.Product{SKU: "SMALL-TABLE"}, 10, nil)
 			err := repo.AddBatch(ctx, batch)
 			assert.NoError(t, err)
 
@@ -167,9 +178,4 @@ func TestRepository(t *testing.T) {
 				helpers.CleanUpRepositoryHelper(db)
 			})
 		})
-}
-
-func newRepositoryHelper() (*pgxpool.Pool, *PostgresRepository) {
-	db := database.InitializeDatabase()
-	return db, NewPostgresRepository(db)
 }

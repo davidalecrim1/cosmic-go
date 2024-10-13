@@ -42,15 +42,6 @@ func NewBatch(ref string, product Product, quantity int, eta *time.Time) *Batch 
 	}
 }
 
-func NewBatchWithoutETA(ref string, product Product, quantity int) *Batch {
-	return &Batch{
-		Reference:         ref,
-		Product:           product,
-		PurchasedQuantity: quantity,
-		Allocations:       make(map[OrderID]OrderLine),
-	}
-}
-
 func (b *Batch) GetETA() *time.Time {
 	return b.eta
 }
@@ -102,14 +93,18 @@ func (b *Batch) AvailableQuantity() int {
 	return b.PurchasedQuantity - allocated
 }
 
+func (b *Batch) isInStock() bool {
+	return b.eta == nil
+}
+
 func Allocate(ol *OrderLine, bt []*Batch) (reference string, err error) {
 	sortBasedOnEarliestETA := func(i, j int) bool {
-		// no ETA (nil) is the earliest
-		if bt[i].eta == nil {
+		// no ETA (nil) is the earliest because the batch is in stock
+		if bt[i].isInStock() {
 			return true
 		}
 
-		if bt[j].eta == nil {
+		if bt[j].isInStock() {
 			return false
 		}
 

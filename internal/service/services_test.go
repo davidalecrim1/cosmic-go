@@ -16,7 +16,7 @@ func TestService(t *testing.T) {
 			ctx := context.Background()
 
 			product := domain.Product{SKU: "SMALL-TABLE"}
-			batch := domain.NewBatchWithoutETA("batch-001", product, 100)
+			batch := domain.NewBatch("batch-001", product, 100, nil)
 
 			repo := NewFakeRepository()
 			svc := NewService(repo)
@@ -31,6 +31,10 @@ func TestService(t *testing.T) {
 			batchRef, err := svc.Allocate(ctx, line)
 			assert.NoError(t, err)
 			assert.Equal(t, "batch-001", batchRef)
+
+			updatedBatch, err := repo.GetBatchByReference(ctx, "batch-001")
+			assert.NoError(t, err)
+			assert.Equal(t, 90, updatedBatch.AvailableQuantity())
 		})
 
 	t.Run("error for invalid sku on allocate",
@@ -38,7 +42,7 @@ func TestService(t *testing.T) {
 			ctx := context.Background()
 
 			product := domain.Product{SKU: "SMALL-TABLE"}
-			batch := domain.NewBatchWithoutETA("batch-001", product, 100)
+			batch := domain.NewBatch("batch-001", product, 100, nil)
 
 			repo := NewFakeRepository()
 			svc := NewService(repo)
@@ -58,10 +62,12 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			batch := domain.NewBatchWithoutETA(
+			batch := domain.NewBatch(
 				"batch-001",
 				domain.Product{SKU: "SMALL-TABLE"},
-				100)
+				100,
+				nil,
+			)
 
 			repo := NewFakeRepository()
 			svc := NewService(repo)
@@ -82,7 +88,7 @@ func TestService(t *testing.T) {
 			product := domain.Product{SKU: "SMALL-TABLE"}
 			var orderID domain.OrderID = "order-001"
 
-			batch := domain.NewBatchWithoutETA("batch-001", product, 100)
+			batch := domain.NewBatch("batch-001", product, 100, nil)
 			batch.Allocations = map[domain.OrderID]domain.OrderLine{
 				orderID: {
 					Product:  product,
@@ -111,7 +117,7 @@ func TestService(t *testing.T) {
 			product := domain.Product{SKU: "SMALL-TABLE"}
 			var orderID domain.OrderID = "order-001"
 
-			batch := domain.NewBatchWithoutETA("batch-001", product, 100)
+			batch := domain.NewBatch("batch-001", product, 100, nil)
 			batch.Allocations = map[domain.OrderID]domain.OrderLine{
 				orderID: {
 					Product:  product,
@@ -140,7 +146,7 @@ func TestService(t *testing.T) {
 			product := domain.Product{SKU: "SMALL-TABLE"}
 			var orderID domain.OrderID = "order-001"
 
-			batch := domain.NewBatchWithoutETA("batch-001", product, 100)
+			batch := domain.NewBatch("batch-001", product, 100, nil)
 			batch.Allocations = map[domain.OrderID]domain.OrderLine{
 				orderID: {
 					Product:  product,
