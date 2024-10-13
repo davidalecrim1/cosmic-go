@@ -297,3 +297,13 @@ In general, if you find yourself needing to do domain-layer stuff directly in yo
 ```
 
 This does seem like a nice tip.
+
+```
+Write the bulk of your tests against the service layer
+These edge-to-edge tests offer a good trade-off between coverage, runtime, and efficiency. Each test tends to cover one code path of a feature and use fakes for I/O. This is the place to exhaustively cover all the edge cases and the ins and outs of your business logic.[1]
+
+Maintain a small core of tests written against your domain model
+These tests have highly focused coverage and are more brittle, but they have the highest feedback. Don’t be afraid to delete these tests if the functionality is later covered by tests at the service layer.
+```
+
+The service layer should be the core of unit testing. Think about when you need to do "low gear" and create some tests over the domain, and when you need to use "high gear" and focus on service layer testing.
