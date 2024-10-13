@@ -19,7 +19,7 @@ type Service struct {
 
 type Repository interface {
 	AddBatch(ctx context.Context, b *domain.Batch) error
-	GetBatchByReference(ctx context.Context, ref string) (*domain.Batch, error)
+	GetBatchByReference(ctx context.Context, batchRef string) (*domain.Batch, error)
 	ListBatches(ctx context.Context) ([]*domain.Batch, error)
 	GetBatchBySku(ctx context.Context, sku string) (*domain.Batch, error)
 	UpdateBatch(ctx context.Context, existingB *domain.Batch, updatedB *domain.Batch) error

@@ -118,9 +118,7 @@ func (r *PostgresRepository) insertOrderLineAndAllocationsFromBatch(
 	for _, line := range b.Allocations {
 		orderlineId, err := r.insertOrderLine(
 			ctx,
-			line.Product.SKU,
-			line.Quantity,
-			line.OrderId,
+			line,
 			tx,
 		)
 		if err != nil {
@@ -138,50 +136,6 @@ func (r *PostgresRepository) insertOrderLineAndAllocationsFromBatch(
 		}
 	}
 	return nil
-}
-
-func (r *PostgresRepository) insertOrderLine(
-	ctx context.Context,
-	sku string,
-	quantity int,
-	orderID domain.OrderID,
-	tx pgx.Tx,
-) (int, error) {
-	query := `
-	INSERT INTO order_lines (product_sku, quantity, orderid)
-	VALUES ($1, $2, $3)
-	RETURNING id;
-	`
-	var orderlineId int
-	err := tx.QueryRow(
-		ctx,
-		query,
-		sku,
-		quantity,
-		orderID,
-	).Scan(&orderlineId)
-
-	return orderlineId, err
-}
-
-func (r *PostgresRepository) insertAllocation(
-	ctx context.Context,
-	ref string,
-	orderlineId int,
-	tx pgx.Tx,
-) error {
-	query := `
-	INSERT INTO allocations (batch_reference, orderline_id)
-	VALUES ($1, $2);
-	`
-	_, err := tx.Exec(
-		ctx,
-		query,
-		ref,
-		orderlineId,
-	)
-
-	return err
 }
 
 func (r *PostgresRepository) GetBatchByReference(
@@ -225,27 +179,19 @@ func (r *PostgresRepository) addOrderLinesAndAllocationsToBatch(
 	JOIN allocations a ON a.orderline_id = o.id
 	WHERE a.batch_reference = $1;
 	`
-	lines, err := r.db.Query(ctx, query, b.Reference)
+	rows, err := r.db.Query(ctx, query, b.Reference)
 	if err != nil {
 		return err
 	}
-	defer lines.Close()
+	defer rows.Close()
 
-	for lines.Next() {
-		var quantity int
-		var productSku string
-		var orderid domain.OrderID
+	orderLines, err := r.mapRowsToOrderLines(rows)
+	if err != nil {
+		return err
+	}
 
-		err = lines.Scan(&quantity, &productSku, &orderid)
-		if err != nil {
-			return err
-		}
-
-		err := b.Allocate(&domain.OrderLine{
-			Product:  domain.Product{SKU: productSku},
-			Quantity: quantity,
-			OrderId:  orderid,
-		})
+	for _, ol := range orderLines {
+		err := b.Allocate(ol)
 		if err != nil {
 			return err
 		}
@@ -347,12 +293,12 @@ func (r *PostgresRepository) updateOrderLinesAndAllocationsFromBatch(
 	tx pgx.Tx,
 ) error {
 	for _, al := range updatedB.Allocations {
-		orderlineID, err := r.insertOrUpdateOrderLine(ctx, al, tx)
+		orderlineID, err := r.insertOrderLine(ctx, al, tx)
 		if err != nil {
 			return err
 		}
 
-		err = r.insertOrUpdateAllocations(ctx, existingB.Reference, orderlineID, tx)
+		err = r.insertAllocation(ctx, existingB.Reference, orderlineID, tx)
 		if err != nil {
 			return err
 		}
@@ -366,7 +312,7 @@ func (r *PostgresRepository) updateOrderLinesAndAllocationsFromBatch(
 	return nil
 }
 
-func (r *PostgresRepository) insertOrUpdateOrderLine(
+func (r *PostgresRepository) insertOrderLine(
 	ctx context.Context,
 	al domain.OrderLine,
 	tx pgx.Tx,
@@ -395,7 +341,7 @@ func (r *PostgresRepository) insertOrUpdateOrderLine(
 	return orderlineID, nil
 }
 
-func (r *PostgresRepository) insertOrUpdateAllocations(
+func (r *PostgresRepository) insertAllocation(
 	ctx context.Context,
 	batchRef string,
 	orderlineID int,
@@ -518,4 +464,30 @@ func (r *PostgresRepository) mapRowToBatch(
 	)
 
 	return batch, nil
+}
+
+func (r *PostgresRepository) mapRowsToOrderLines(
+	rows pgx.Rows,
+) ([]*domain.OrderLine, error) {
+	var orderLines []*domain.OrderLine
+	defer rows.Close()
+
+	for rows.Next() {
+		var quantity int
+		var productSku string
+		var orderid domain.OrderID
+
+		err := rows.Scan(&quantity, &productSku, &orderid)
+		if err != nil {
+			return nil, err
+		}
+
+		orderLines = append(orderLines, &domain.OrderLine{
+			Product:  domain.Product{SKU: productSku},
+			Quantity: quantity,
+			OrderId:  orderid,
+		})
+	}
+
+	return orderLines, nil
 }
