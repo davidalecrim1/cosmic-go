@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	"cosmic-go/internal/application"
 	"cosmic-go/internal/domain"
-	"cosmic-go/internal/service"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -17,10 +17,10 @@ import (
 var defaultRequestTimeout = time.Second * 30
 
 type Handler struct {
-	svc *service.Service
+	svc *application.Service
 }
 
-func NewHandler(svc *service.Service) *Handler {
+func NewHandler(svc *application.Service) *Handler {
 	return &Handler{
 		svc: svc,
 	}
@@ -54,7 +54,7 @@ func (h *Handler) Allocate(w http.ResponseWriter, r *http.Request) {
 
 	batchref, err := h.svc.Allocate(ctx, line)
 
-	if errors.Is(err, service.ErrInvalidSku) {
+	if errors.Is(err, application.ErrInvalidSku) {
 		w.WriteHeader(http.StatusBadRequest)
 
 		response := &BadRequestResponse{
@@ -105,7 +105,7 @@ func (h *Handler) Deallocate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.svc.Deallocate(ctx, reqBody.OrderID, reqBody.SKU)
-	if errors.Is(err, service.ErrInvalidSku) || errors.Is(err, service.ErrInvalidOrderID) {
+	if errors.Is(err, application.ErrInvalidSku) || errors.Is(err, application.ErrInvalidOrderID) {
 		w.WriteHeader(http.StatusBadRequest)
 
 		response := &BadRequestResponse{

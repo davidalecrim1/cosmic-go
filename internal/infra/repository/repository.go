@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"cosmic-go/internal/application"
 	"cosmic-go/internal/domain"
-	"cosmic-go/internal/service"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -451,7 +451,7 @@ func (r *PostgresRepository) mapRowToBatch(
 	)
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, service.ErrBatchNotFound
+		return nil, application.ErrBatchNotFound
 	} else if err != nil {
 		return nil, err
 	}
