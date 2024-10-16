@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"cosmic-go/internal/domain"
 
 	"github.com/stretchr/testify/assert"
 )
+
+// mode the uow and fake repo here globally
 
 func TestService(t *testing.T) {
 	t.Run("allocate batch",
@@ -19,7 +22,8 @@ func TestService(t *testing.T) {
 			batch := domain.NewBatch("batch-001", product, 100, nil)
 
 			repo := NewFakeRepository()
-			svc := NewService(repo)
+			uow := NewFakeUnitOfWorkFromRepository(repo)
+			svc := NewService(uow)
 			err := svc.AddBatch(ctx, batch)
 			assert.NoError(t, err)
 
@@ -33,8 +37,8 @@ func TestService(t *testing.T) {
 			assert.Equal(t, "batch-001", batchRef)
 
 			updatedBatch, err := repo.GetBatchByReference(ctx, "batch-001")
-			assert.NoError(t, err)
 			assert.Equal(t, 90, updatedBatch.AvailableQuantity())
+			assert.NoError(t, err)
 		})
 
 	t.Run("error for invalid sku on allocate",
@@ -45,7 +49,8 @@ func TestService(t *testing.T) {
 			batch := domain.NewBatch("batch-001", product, 100, nil)
 
 			repo := NewFakeRepository()
-			svc := NewService(repo)
+			uow := NewFakeUnitOfWorkFromRepository(repo)
+			svc := NewService(uow)
 			err := svc.AddBatch(ctx, batch)
 			assert.NoError(t, err)
 
@@ -70,7 +75,8 @@ func TestService(t *testing.T) {
 			)
 
 			repo := NewFakeRepository()
-			svc := NewService(repo)
+			uow := NewFakeUnitOfWorkFromRepository(repo)
+			svc := NewService(uow)
 
 			err := svc.AddBatch(ctx, batch)
 			assert.NoError(t, err)
@@ -98,7 +104,8 @@ func TestService(t *testing.T) {
 			}
 
 			repo := NewFakeRepository()
-			svc := NewService(repo)
+			uow := NewFakeUnitOfWorkFromRepository(repo)
+			svc := NewService(uow)
 			err := svc.AddBatch(ctx, batch)
 			assert.NoError(t, err)
 
@@ -127,7 +134,8 @@ func TestService(t *testing.T) {
 			}
 
 			repo := NewFakeRepository()
-			svc := NewService(repo)
+			uow := NewFakeUnitOfWorkFromRepository(repo)
+			svc := NewService(uow)
 			err := svc.AddBatch(ctx, batch)
 			assert.NoError(t, err)
 
@@ -156,7 +164,8 @@ func TestService(t *testing.T) {
 			}
 
 			repo := NewFakeRepository()
-			svc := NewService(repo)
+			uow := NewFakeUnitOfWorkFromRepository(repo)
+			svc := NewService(uow)
 
 			err := svc.AddBatch(ctx, batch)
 			assert.NoError(t, err)
@@ -166,6 +175,41 @@ func TestService(t *testing.T) {
 
 			_, ok := batch.Allocations[orderID]
 			assert.False(t, ok)
+		})
+
+	t.Run("reallocate allocated orderline",
+		func(t *testing.T) {
+			repo := NewFakeRepository()
+			uow := NewFakeUnitOfWorkFromRepository(repo)
+			svc := NewService(uow)
+
+			ctx := context.Background()
+
+			product := domain.Product{SKU: "SMALL-TABLE"}
+			orderLine := &domain.OrderLine{
+				Product:  product,
+				Quantity: 25,
+				OrderId:  "order-001",
+			}
+
+			eta := time.Now().Add(time.Hour * 48)
+			existingBatch := domain.NewBatch("batch-001", product, 100, &eta)
+			err := existingBatch.Allocate(orderLine)
+			assert.NoError(t, err)
+
+			err = svc.AddBatch(ctx, existingBatch)
+			assert.NoError(t, err)
+
+			otherBatch := domain.NewBatch("batch-002", product, 50, nil)
+
+			err = svc.AddBatch(ctx, otherBatch)
+			assert.NoError(t, err)
+
+			updatedBatchRef, err := svc.Reallocate(ctx, orderLine)
+			assert.NoError(t, err)
+
+			assert.Equal(t, otherBatch.Reference, updatedBatchRef)
+			assert.Equal(t, existingBatch.AvailableQuantity(), existingBatch.PurchasedQuantity)
 		})
 }
 

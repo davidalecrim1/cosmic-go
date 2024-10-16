@@ -307,3 +307,11 @@ These tests have highly focused coverage and are more brittle, but they have the
 ```
 
 The service layer should be the core of unit testing. Think about when you need to do "low gear" and create some tests over the domain, and when you need to use "high gear" and focus on service layer testing.
+
+
+## Chapter 06: Unit of Work Pattern
+```
+If the Repository pattern is our abstraction over the idea of persistent storage, the Unit of Work (UoW) pattern is our abstraction over the idea of atomic operations. It will allow us to finally and fully decouple our service layer from the data layer.
+```
+
+In Go the Unit of Work doesn't seem to make sense it is in the book. With `pgxpool` we can reuse the connections on the database, and the hard thing is orchestrate transactions. I will create the [UoW based on this article](https://threedots.tech/post/database-transactions-in-go/).

@@ -16,14 +16,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var (
-	db   *pgxpool.Pool
-	repo *PostgresRepository
-)
+var db *pgxpool.Pool
 
 func TestMain(m *testing.M) {
 	db = database.InitializeDatabase()
-	repo = NewPostgresRepository(db)
 
 	code := m.Run()
 	os.Exit(code)
@@ -34,8 +30,12 @@ func TestRepository(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
+			tx, err := db.Begin(ctx)
+			assert.NoError(t, err)
+			repo := NewPostgresRepository(tx)
+
 			batch := domain.NewBatch("batch-001", domain.Product{SKU: "SMALL-TABLE"}, 10, nil)
-			err := repo.AddBatch(ctx, batch)
+			err = repo.AddBatch(ctx, batch)
 			assert.NoError(t, err)
 
 			resultedBatch, err := repo.GetBatchByReference(ctx, batch.Reference)
@@ -44,6 +44,7 @@ func TestRepository(t *testing.T) {
 			assert.Equal(t, batch, resultedBatch)
 
 			t.Cleanup(func() {
+				tx.Commit(ctx)
 				helpers.CleanUpRepositoryHelper(db)
 			})
 		})
@@ -51,6 +52,9 @@ func TestRepository(t *testing.T) {
 	t.Run("get a batch with allocations",
 		func(t *testing.T) {
 			ctx := context.Background()
+			tx, err := db.Begin(ctx)
+			assert.NoError(t, err)
+			repo := NewPostgresRepository(tx)
 
 			eta := time.Now()
 			initialBatchReference := "batch-001"
@@ -77,7 +81,7 @@ func TestRepository(t *testing.T) {
 				OrderId:  "order-002",
 			}
 
-			err := initialBatch.Allocate(firstOrder)
+			err = initialBatch.Allocate(firstOrder)
 			assert.NoError(t, err)
 
 			err = initialBatch.Allocate(secondOrder)
@@ -96,6 +100,7 @@ func TestRepository(t *testing.T) {
 			assert.Equal(t, initialBatch.GetETA().Format(time.RFC3339), resultedBatch.GetETA().Format(time.RFC3339))
 
 			t.Cleanup(func() {
+				tx.Commit(ctx)
 				helpers.CleanUpRepositoryHelper(db)
 			})
 		})
@@ -103,6 +108,10 @@ func TestRepository(t *testing.T) {
 	t.Run("list batches that have no allocations",
 		func(t *testing.T) {
 			ctx := context.Background()
+			tx, err := db.Begin(ctx)
+			assert.NoError(t, err)
+			repo := NewPostgresRepository(tx)
+
 			createdBatches := 2
 
 			etaOne := time.Now().Add(24 * time.Hour)
@@ -111,7 +120,7 @@ func TestRepository(t *testing.T) {
 			etaTwo := time.Now().Add(48 * time.Hour)
 			batchTwo := domain.NewBatch("batch-002", domain.Product{SKU: "LARGE-TABLE"}, 100, &etaTwo)
 
-			err := repo.AddBatch(ctx, batchOne)
+			err = repo.AddBatch(ctx, batchOne)
 			assert.NoError(t, err)
 
 			err = repo.AddBatch(ctx, batchTwo)
@@ -122,6 +131,7 @@ func TestRepository(t *testing.T) {
 			assert.Equal(t, createdBatches, len(batches))
 
 			t.Cleanup(func() {
+				tx.Commit(ctx)
 				helpers.CleanUpRepositoryHelper(db)
 			})
 		})
@@ -129,6 +139,9 @@ func TestRepository(t *testing.T) {
 	t.Run("get batch with allocations by sku",
 		func(t *testing.T) {
 			ctx := context.Background()
+			tx, err := db.Begin(ctx)
+			assert.NoError(t, err)
+			repo := NewPostgresRepository(tx)
 
 			eta := time.Now()
 			initialSKU := "SMALL-TABLE"
@@ -155,7 +168,7 @@ func TestRepository(t *testing.T) {
 				OrderId:  "order-002",
 			}
 
-			err := initialBatch.Allocate(firstOrder)
+			err = initialBatch.Allocate(firstOrder)
 			assert.NoError(t, err)
 
 			err = initialBatch.Allocate(secondOrder)
@@ -175,6 +188,7 @@ func TestRepository(t *testing.T) {
 			assert.Equal(t, initialBatch.GetETA().Format(time.RFC3339), resultedBatch.GetETA().Format(time.RFC3339))
 
 			t.Cleanup(func() {
+				tx.Commit(ctx)
 				helpers.CleanUpRepositoryHelper(db)
 			})
 		})

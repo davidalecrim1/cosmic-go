@@ -5,84 +5,56 @@ import (
 	"errors"
 	"time"
 
-	"cosmic-go/internal/application"
 	"cosmic-go/internal/domain"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+var ErrBatchNotFound = errors.New("batch not found in the database")
+
 type PostgresRepository struct {
-	db *pgxpool.Pool
+	tx pgx.Tx
 }
 
-func NewPostgresRepository(db *pgxpool.Pool) *PostgresRepository {
-	return &PostgresRepository{db: db}
-}
-
-func (r *PostgresRepository) runWithTransaction(
-	ctx context.Context,
-	db *pgxpool.Pool,
-	fn func(tx pgx.Tx) error,
-) error {
-	tx, err := db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-
-	err = fn(tx)
-	if err == nil {
-		return tx.Commit(ctx)
-	}
-
-	rollbackErr := tx.Rollback(ctx)
-	if rollbackErr != nil {
-		return errors.Join(err, rollbackErr)
-	}
-
-	return err
+func NewPostgresRepository(tx pgx.Tx) *PostgresRepository {
+	return &PostgresRepository{tx: tx}
 }
 
 func (r *PostgresRepository) AddBatch(
 	ctx context.Context,
 	b *domain.Batch,
 ) error {
-	return r.runWithTransaction(ctx, r.db, func(tx pgx.Tx) error {
-		err := r.insertProduct(ctx, b.Product.SKU, tx)
-		if err != nil {
-			return err
-		}
+	err := r.insertProduct(ctx, b.Product.SKU)
+	if err != nil {
+		return err
+	}
 
-		err = r.insertBatch(ctx, b, tx)
-		if err != nil {
-			return err
-		}
+	err = r.insertBatch(ctx, b)
+	if err != nil {
+		return err
+	}
 
-		err = r.insertOrderLineAndAllocationsFromBatch(
-			ctx,
-			b,
-			tx,
-		)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	},
+	err = r.insertOrderLineAndAllocationsFromBatch(
+		ctx,
+		b,
 	)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *PostgresRepository) insertProduct(
 	ctx context.Context,
 	sku string,
-	tx pgx.Tx,
 ) error {
 	query := `
 	INSERT INTO products (sku) 
 	VALUES ($1)
 	ON CONFLICT (sku) DO NOTHING;
 	`
-	_, err := tx.Exec(
+	_, err := r.tx.Exec(
 		ctx,
 		query,
 		sku,
@@ -94,13 +66,12 @@ func (r *PostgresRepository) insertProduct(
 func (r *PostgresRepository) insertBatch(
 	ctx context.Context,
 	b *domain.Batch,
-	tx pgx.Tx,
 ) error {
 	query := `
 	INSERT INTO batches (reference, product_sku, purchased_quantity, eta)
 	VALUES ($1, $2, $3, $4);
 	`
-	_, err := tx.Exec(ctx,
+	_, err := r.tx.Exec(ctx,
 		query,
 		b.Reference,
 		string(b.Product.SKU),
@@ -113,13 +84,11 @@ func (r *PostgresRepository) insertBatch(
 func (r *PostgresRepository) insertOrderLineAndAllocationsFromBatch(
 	ctx context.Context,
 	b *domain.Batch,
-	tx pgx.Tx,
 ) error {
 	for _, line := range b.Allocations {
 		orderlineId, err := r.insertOrderLine(
 			ctx,
 			line,
-			tx,
 		)
 		if err != nil {
 			return err
@@ -129,7 +98,6 @@ func (r *PostgresRepository) insertOrderLineAndAllocationsFromBatch(
 			ctx,
 			b.Reference,
 			orderlineId,
-			tx,
 		)
 		if err != nil {
 			return err
@@ -165,7 +133,7 @@ func (r *PostgresRepository) getBatchByReference(
 	WHERE b.reference = $1;
 	`
 
-	row := r.db.QueryRow(ctx, query, ref)
+	row := r.tx.QueryRow(ctx, query, ref)
 	return r.mapRowToBatch(row)
 }
 
@@ -179,7 +147,7 @@ func (r *PostgresRepository) addOrderLinesAndAllocationsToBatch(
 	JOIN allocations a ON a.orderline_id = o.id
 	WHERE a.batch_reference = $1;
 	`
-	rows, err := r.db.Query(ctx, query, b.Reference)
+	rows, err := r.tx.Query(ctx, query, b.Reference)
 	if err != nil {
 		return err
 	}
@@ -207,7 +175,7 @@ func (r *PostgresRepository) ListBatches(
 	SELECT reference, product_sku, purchased_quantity, eta
 	FROM batches;`
 
-	rows, err := r.db.Query(ctx, query)
+	rows, err := r.tx.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +210,7 @@ func (r *PostgresRepository) getBatchBySku(
 	WHERE b.product_sku = $1;
 	`
 
-	row := r.db.QueryRow(
+	row := r.tx.QueryRow(
 		ctx,
 		query,
 		sku,
@@ -256,33 +224,29 @@ func (r *PostgresRepository) UpdateBatch(
 	existingB *domain.Batch,
 	updatedB *domain.Batch,
 ) error {
-	return r.runWithTransaction(ctx, r.db, func(tx pgx.Tx) error {
-		err := r.updateBatch(ctx, updatedB, tx)
-		if err != nil {
-			return err
-		}
+	err := r.updateBatch(ctx, updatedB)
+	if err != nil {
+		return err
+	}
 
-		err = r.updateOrderLinesAndAllocationsFromBatch(ctx, existingB, updatedB, tx)
-		if err != nil {
-			return err
-		}
+	err = r.updateOrderLinesAndAllocationsFromBatch(ctx, existingB, updatedB)
+	if err != nil {
+		return err
+	}
 
-		return nil
-	},
-	)
+	return nil
 }
 
 func (r *PostgresRepository) updateBatch(
 	ctx context.Context,
 	b *domain.Batch,
-	tx pgx.Tx,
 ) error {
 	query := `
 	UPDATE batches
 	SET purchased_quantity = $1, eta = $2
 	WHERE reference = $3;
 	`
-	_, err := tx.Exec(ctx, query, b.PurchasedQuantity, b.GetETA(), b.Reference)
+	_, err := r.tx.Exec(ctx, query, b.PurchasedQuantity, b.GetETA(), b.Reference)
 	return err
 }
 
@@ -290,21 +254,20 @@ func (r *PostgresRepository) updateOrderLinesAndAllocationsFromBatch(
 	ctx context.Context,
 	existingB *domain.Batch,
 	updatedB *domain.Batch,
-	tx pgx.Tx,
 ) error {
 	for _, al := range updatedB.Allocations {
-		orderlineID, err := r.insertOrderLine(ctx, al, tx)
+		orderlineID, err := r.insertOrderLine(ctx, al)
 		if err != nil {
 			return err
 		}
 
-		err = r.insertAllocation(ctx, existingB.Reference, orderlineID, tx)
+		err = r.insertAllocation(ctx, existingB.Reference, orderlineID)
 		if err != nil {
 			return err
 		}
 	}
 
-	err := r.deleteDeallocatedOrderLines(ctx, existingB, updatedB, tx)
+	err := r.deleteDeallocatedOrderLines(ctx, existingB, updatedB)
 	if err != nil {
 		return err
 	}
@@ -315,7 +278,6 @@ func (r *PostgresRepository) updateOrderLinesAndAllocationsFromBatch(
 func (r *PostgresRepository) insertOrderLine(
 	ctx context.Context,
 	al domain.OrderLine,
-	tx pgx.Tx,
 ) (id int, err error) {
 	query := `
 	WITH existing AS (
@@ -327,7 +289,7 @@ func (r *PostgresRepository) insertOrderLine(
 	RETURNING id;
 	`
 	var orderlineID int
-	err = tx.QueryRow(
+	err = r.tx.QueryRow(
 		ctx,
 		query,
 		al.Product.SKU,
@@ -345,7 +307,6 @@ func (r *PostgresRepository) insertAllocation(
 	ctx context.Context,
 	batchRef string,
 	orderlineID int,
-	tx pgx.Tx,
 ) error {
 	query := `
 	WITH existing AS (
@@ -356,7 +317,7 @@ func (r *PostgresRepository) insertAllocation(
 	SELECT $1, $2
 	WHERE NOT EXISTS (SELECT 1 FROM existing);
 	`
-	_, err := tx.Exec(ctx, query, orderlineID, batchRef)
+	_, err := r.tx.Exec(ctx, query, orderlineID, batchRef)
 	if err != nil {
 		return err
 	}
@@ -368,7 +329,6 @@ func (r *PostgresRepository) deleteDeallocatedOrderLines(
 	ctx context.Context,
 	existingB *domain.Batch,
 	updatedB *domain.Batch,
-	tx pgx.Tx,
 ) error {
 	for _, allocatedOrderLine := range existingB.Allocations {
 		if r.orderLineDeallocated(allocatedOrderLine, updatedB) {
@@ -379,7 +339,7 @@ func (r *PostgresRepository) deleteDeallocatedOrderLines(
 			)
 			AND batch_reference = $2;
 			`
-			_, err := tx.Exec(
+			_, err := r.tx.Exec(
 				ctx,
 				query,
 				allocatedOrderLine.OrderId,
@@ -451,7 +411,7 @@ func (r *PostgresRepository) mapRowToBatch(
 	)
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, application.ErrBatchNotFound
+		return nil, ErrBatchNotFound
 	} else if err != nil {
 		return nil, err
 	}
