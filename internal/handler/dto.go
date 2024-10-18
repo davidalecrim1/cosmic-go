@@ -17,15 +17,15 @@ type DeallocateRequest struct {
 	SKU     string `json:"sku" validate:"required"`
 }
 
-type AddBatchRequest struct {
-	Reference         string     `json:"reference" validate:"required"`
-	Product           ProductDTO `json:"product"`
-	PurchasedQuantity int        `json:"purchased_quantity" validate:"required,gt=0"`
-	ETA               time.Time  `json:"eta"`
+type AddProductRequest struct {
+	SKU     string      `json:"sku" validate:"required"`
+	Batches []*BatchDTO `json:"batches"`
 }
 
-type ProductDTO struct {
-	SKU string `json:"sku" validate:"required"`
+type BatchDTO struct {
+	Reference         string     `json:"reference" validate:"required"`
+	PurchasedQuantity int        `json:"purchased_quantity" validate:"required,gt=0"`
+	ETA               *time.Time `json:"eta"`
 }
 
 type BadRequestResponse struct {

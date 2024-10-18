@@ -34,8 +34,8 @@ func TestDomainModel(t *testing.T) {
 	t.Run("cannot allocate if skus do not match",
 		func(t *testing.T) {
 			eta := time.Now()
-			batch := NewBatch("batch-001", Product{"ELEC-TRUMPET"}, 10, &eta)
-			line := &OrderLine{Product{"SMALL-TABLE"}, 10, "order-001"}
+			batch := NewBatch("batch-001", "ELEC-TRUMPET", 10, &eta)
+			line := &OrderLine{"order-001", "SMALL-TABLE", 10}
 			err := batch.Allocate(line)
 			assert.Error(t, err)
 		})
@@ -43,8 +43,8 @@ func TestDomainModel(t *testing.T) {
 	t.Run("can only deallocate allocated order lines",
 		func(t *testing.T) {
 			eta := time.Now()
-			batch := NewBatch("batch-001", Product{"ELEC-TRUMPET"}, 10, &eta)
-			unallocatedLine := &OrderLine{Product{"SMALL-TABLE"}, 1, "order-001"}
+			batch := NewBatch("batch-001", "ELEC-TRUMPET", 10, &eta)
+			unallocatedLine := &OrderLine{"order-001", "SMALL-TABLE", 1}
 			err := batch.Deallocate(unallocatedLine)
 			assert.Error(t, err)
 			assert.Equal(t, 10, batch.AvailableQuantity())
@@ -64,13 +64,15 @@ func TestDomainModel(t *testing.T) {
 
 	t.Run("prefers current stock batches to shipments",
 		func(t *testing.T) {
-			inStockBatch := NewBatch("in_stock_batch", Product{"RETRO-CLOCK"}, 100, nil)
+			inStockBatch := NewBatch("in_stock_batch", "RETRO-CLOCK", 100, nil)
 			eta := time.Now().Add(time.Hour * 24)
-			shipmentBatch := NewBatch("shipment_batch", Product{"RETRO-CLOCK"}, 100, &eta)
-			line := &OrderLine{Product{"RETRO-CLOCK"}, 10, "order-001"}
+			shipmentBatch := NewBatch("shipment_batch", "RETRO-CLOCK", 100, &eta)
+			line := &OrderLine{"order-001", "RETRO-CLOCK", 10}
 
-			_, err := Allocate(line, []*Batch{inStockBatch, shipmentBatch})
+			product := NewProduct("RETRO-CLOCK", []*Batch{inStockBatch, shipmentBatch}, 0)
+			_, err := product.Allocate(line)
 			assert.NoError(t, err)
+
 			assert.Equal(t, 90, inStockBatch.AvailableQuantity())
 			assert.Equal(t, 100, shipmentBatch.AvailableQuantity())
 		})
@@ -78,18 +80,20 @@ func TestDomainModel(t *testing.T) {
 	t.Run("prefers earliest batch to later batches",
 		func(t *testing.T) {
 			earlistEta := time.Now()
-			earliest := NewBatch("earliest_batch", Product{"RETRO-CLOCK"}, 100, &earlistEta)
+			earliest := NewBatch("earliest_batch", "RETRO-CLOCK", 100, &earlistEta)
 
 			mediumEta := time.Now().Add(time.Hour * 24)
-			medium := NewBatch("medium_batch", Product{"RETRO-CLOCK"}, 100, &mediumEta)
+			medium := NewBatch("medium_batch", "RETRO-CLOCK", 100, &mediumEta)
 
 			laterEta := time.Now().Add(time.Hour * 48)
-			later := NewBatch("later_batch", Product{"RETRO-CLOCK"}, 100, &laterEta)
+			later := NewBatch("later_batch", "RETRO-CLOCK", 100, &laterEta)
 
-			line := &OrderLine{Product{"RETRO-CLOCK"}, 10, "order-001"}
+			line := &OrderLine{"order-001", "RETRO-CLOCK", 10}
 
-			_, err := Allocate(line, []*Batch{later, earliest, medium})
+			product := NewProduct("RETRO-CLOCK", []*Batch{earliest, medium, later}, 0)
+			_, err := product.Allocate(line)
 			assert.NoError(t, err)
+
 			assert.Equal(t, 90, earliest.AvailableQuantity())
 			assert.Equal(t, 100, medium.AvailableQuantity())
 			assert.Equal(t, 100, later.AvailableQuantity())
@@ -98,11 +102,12 @@ func TestDomainModel(t *testing.T) {
 	t.Run("out of stock error if cannot allocate",
 		func(t *testing.T) {
 			batch, line := createBatchAndOrderLine(t, "ELEC-TRUMPET", 10, 10)
-			anotherLine := &OrderLine{Product{"ELEC-TRUMPET"}, 2, "order-001"}
+			anotherLine := &OrderLine{"order-001", "ELEC-TRUMPET", 10}
 
-			_, err := Allocate(line, []*Batch{batch})
+			product := NewProduct("ELEC-TRUMPET", []*Batch{batch}, 0)
+			_, err := product.Allocate(line)
 			assert.NoError(t, err)
-			_, err = Allocate(anotherLine, []*Batch{batch})
+			_, err = product.Allocate(anotherLine)
 			assert.ErrorIs(t, err, ErrOrderLinesOverBatch)
 		})
 }
@@ -110,7 +115,7 @@ func TestDomainModel(t *testing.T) {
 func createBatchAndOrderLine(t *testing.T, sku string, batchQty, lineQty int) (*Batch, *OrderLine) {
 	t.Helper()
 	eta := time.Now()
-	batch := NewBatch("batch-001", Product{sku}, batchQty, &eta)
-	line := OrderLine{Product{sku}, lineQty, "order-001"}
+	batch := NewBatch("batch-001", sku, batchQty, &eta)
+	line := OrderLine{"order-001", sku, lineQty}
 	return batch, &line
 }

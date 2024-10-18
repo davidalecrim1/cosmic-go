@@ -8,6 +8,7 @@ import (
 
 	"cosmic-go/internal/domain"
 	"cosmic-go/internal/infra/database"
+	"cosmic-go/internal/infra/repository"
 	"cosmic-go/test/helpers"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,26 +29,29 @@ func TestUnitOfWork(t *testing.T) {
 		ctx := context.Background()
 		uow := NewBatchUnitOfWork(db)
 
+		sku := "ROUND-TABLE"
+		product := domain.NewProduct(sku, []*domain.Batch{domain.NewBatch(
+			"batch-001",
+			sku,
+			10,
+			nil,
+		)}, 0)
+
 		_ = uow.Transact(ctx, func(adapters Adapters) error {
-			err := adapters.Repository.AddBatch(ctx, domain.NewBatch(
-				"batch-001",
-				domain.Product{SKU: "ROUND-TABLE"},
-				10,
-				nil,
-			))
+			err := adapters.Repository.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
-			batches, err := adapters.Repository.ListBatches(ctx)
-			assert.Len(t, batches, 1)
+			resultedProduct, err := adapters.Repository.GetProduct(ctx, sku)
+			assert.Len(t, resultedProduct.Batches, 1)
 			assert.NoError(t, err)
 			return err
 		})
 
 		ensureTransactionWasCommited := func() error {
 			return uow.Transact(ctx, func(adapters Adapters) error {
-				batches, err := adapters.Repository.ListBatches(ctx)
-				assert.Len(t, batches, 1)
+				product, err := adapters.Repository.GetProduct(ctx, sku)
 				assert.NoError(t, err)
+				assert.Len(t, product.Batches, 1)
 				return err
 			})
 		}
@@ -64,18 +68,21 @@ func TestUnitOfWork(t *testing.T) {
 		ctx := context.Background()
 		uow := NewBatchUnitOfWork(db)
 
+		sku := "ROUND-TABLE"
+		product := domain.NewProduct(sku, []*domain.Batch{domain.NewBatch(
+			"batch-001",
+			sku,
+			10,
+			nil,
+		)}, 0)
+
 		expectedErr := uow.Transact(ctx, func(adapters Adapters) error {
-			err := adapters.Repository.AddBatch(ctx, domain.NewBatch(
-				"batch-001",
-				domain.Product{SKU: "ROUND-TABLE"},
-				10,
-				nil,
-			))
+			err := adapters.Repository.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
-			batches, err := adapters.Repository.ListBatches(ctx)
-			assert.Len(t, batches, 1)
+			product, err := adapters.Repository.GetProduct(ctx, sku)
 			assert.NoError(t, err)
+			assert.Len(t, product.Batches, 1)
 
 			return errors.New("must rollback this transaction because err is not nil")
 		})
@@ -83,14 +90,14 @@ func TestUnitOfWork(t *testing.T) {
 
 		ensureTransactionWasRolledBack := func() error {
 			return uow.Transact(ctx, func(adapters Adapters) error {
-				batches, err := adapters.Repository.ListBatches(ctx)
-				assert.Len(t, batches, 0)
+				product, err := adapters.Repository.GetProduct(ctx, sku)
+				assert.Nil(t, product)
 				return err
 			})
 		}
 
 		err := ensureTransactionWasRolledBack()
-		assert.NoError(t, err)
+		assert.ErrorIs(t, err, repository.ErrProductNotFound)
 
 		t.Cleanup(func() {
 			helpers.CleanUpRepositoryHelper(db)

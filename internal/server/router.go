@@ -10,6 +10,6 @@ func InitializeRouter(h *handler.Handler) *http.ServeMux {
 	router := http.NewServeMux()
 	router.HandleFunc("/allocate", h.Allocate)
 	router.HandleFunc("/deallocate", h.Deallocate)
-	router.HandleFunc("POST /batches", h.AddBatch)
+	router.HandleFunc("POST /products", h.AddProduct)
 	return router
 }

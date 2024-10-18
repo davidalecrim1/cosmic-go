@@ -2,116 +2,114 @@ package application
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"cosmic-go/internal/domain"
+	"cosmic-go/internal/infra/repository"
 
 	"github.com/stretchr/testify/assert"
 )
-
-// mode the uow and fake repo here globally
 
 func TestService(t *testing.T) {
 	t.Run("allocate batch",
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			product := domain.Product{SKU: "SMALL-TABLE"}
-			batch := domain.NewBatch("batch-001", product, 100, nil)
+			sku := "SMALL-TABLE"
+			batch := domain.NewBatch("batch-001", sku, 100, nil)
+			product := domain.NewProduct(sku, []*domain.Batch{batch}, 0)
 
 			repo := NewFakeRepository()
 			uow := NewFakeUnitOfWorkFromRepository(repo)
 			svc := NewService(uow)
-			err := svc.AddBatch(ctx, batch)
+
+			err := svc.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
 			line := &domain.OrderLine{
-				Product:  product,
+				SKU:      sku,
 				Quantity: 10,
 			}
 
 			batchRef, err := svc.Allocate(ctx, line)
 			assert.NoError(t, err)
 			assert.Equal(t, "batch-001", batchRef)
-
-			updatedBatch, err := repo.GetBatchByReference(ctx, "batch-001")
-			assert.Equal(t, 90, updatedBatch.AvailableQuantity())
-			assert.NoError(t, err)
 		})
 
 	t.Run("error for invalid sku on allocate",
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			product := domain.Product{SKU: "SMALL-TABLE"}
-			batch := domain.NewBatch("batch-001", product, 100, nil)
-
 			repo := NewFakeRepository()
 			uow := NewFakeUnitOfWorkFromRepository(repo)
 			svc := NewService(uow)
-			err := svc.AddBatch(ctx, batch)
+
+			sku := "SMALL-TABLE"
+			batch := domain.NewBatch("batch-001", sku, 100, nil)
+			product := domain.NewProduct(sku, []*domain.Batch{batch}, 0)
+
+			err := svc.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
 			line := &domain.OrderLine{
-				Product:  domain.Product{SKU: "ANOTHER-SKU"},
+				SKU:      "ANOTHER-SKU",
 				Quantity: 10,
 			}
 
 			_, err = svc.Allocate(ctx, line)
-			assert.Error(t, err, ErrInvalidSku)
+			assert.Error(t, err, ErrProductNotFound)
 		})
 
-	t.Run("add batch",
+	t.Run("add product",
 		func(t *testing.T) {
 			ctx := context.Background()
-
-			batch := domain.NewBatch(
-				"batch-001",
-				domain.Product{SKU: "SMALL-TABLE"},
-				100,
-				nil,
-			)
 
 			repo := NewFakeRepository()
 			uow := NewFakeUnitOfWorkFromRepository(repo)
 			svc := NewService(uow)
 
-			err := svc.AddBatch(ctx, batch)
+			sku := "SMALL-TABLE"
+			batch := domain.NewBatch("batch-001", sku, 100, nil)
+			product := domain.NewProduct(sku, []*domain.Batch{batch}, 0)
+
+			err := svc.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
-			persistedBatch, err := repo.GetBatchByReference(ctx, "batch-001")
+			persistedProduct, err := repo.GetProduct(ctx, sku)
 			assert.NoError(t, err)
 
-			assert.Equal(t, persistedBatch, batch)
+			assert.Equal(t, persistedProduct, product)
 		})
 
 	t.Run("deallocate invalid orderline from batch with wrong sku",
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			product := domain.Product{SKU: "SMALL-TABLE"}
+			repo := NewFakeRepository()
+			uow := NewFakeUnitOfWorkFromRepository(repo)
+			svc := NewService(uow)
+
+			sku := "SMALL-TABLE"
+			batch := domain.NewBatch("batch-001", sku, 100, nil)
+
 			var orderID domain.OrderID = "order-001"
 
-			batch := domain.NewBatch("batch-001", product, 100, nil)
 			batch.Allocations = map[domain.OrderID]domain.OrderLine{
 				orderID: {
-					Product:  product,
+					SKU:      sku,
 					Quantity: 10,
 					OrderId:  orderID,
 				},
 			}
 
-			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWorkFromRepository(repo)
-			svc := NewService(uow)
-			err := svc.AddBatch(ctx, batch)
+			product := domain.NewProduct(sku, []*domain.Batch{batch}, 0)
+			err := svc.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
 			invalidProductSKU := "INVALID_SKU"
-			err = svc.Deallocate(ctx, string(orderID), invalidProductSKU)
-			assert.ErrorIs(t, err, ErrInvalidSku)
+			err = svc.Deallocate(ctx, orderID, invalidProductSKU)
+			assert.ErrorIs(t, err, ErrProductNotFound)
 
 			_, ok := batch.Allocations[orderID]
 			assert.True(t, ok)
@@ -121,25 +119,28 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			product := domain.Product{SKU: "SMALL-TABLE"}
+			repo := NewFakeRepository()
+			uow := NewFakeUnitOfWorkFromRepository(repo)
+			svc := NewService(uow)
+
 			var orderID domain.OrderID = "order-001"
 
-			batch := domain.NewBatch("batch-001", product, 100, nil)
+			sku := "SMALL-TABLE"
+			batch := domain.NewBatch("batch-001", sku, 100, nil)
+			product := domain.NewProduct(sku, []*domain.Batch{batch}, 0)
+
 			batch.Allocations = map[domain.OrderID]domain.OrderLine{
 				orderID: {
-					Product:  product,
+					SKU:      sku,
 					Quantity: 10,
 					OrderId:  orderID,
 				},
 			}
 
-			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWorkFromRepository(repo)
-			svc := NewService(uow)
-			err := svc.AddBatch(ctx, batch)
+			err := svc.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
-			invalidOrderId := "INVALID_ORDERID"
+			var invalidOrderId domain.OrderID = "INVALID_ORDERID"
 			err = svc.Deallocate(ctx, invalidOrderId, product.SKU)
 			assert.ErrorIs(t, err, ErrInvalidOrderID)
 
@@ -151,13 +152,15 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			product := domain.Product{SKU: "SMALL-TABLE"}
 			var orderID domain.OrderID = "order-001"
 
-			batch := domain.NewBatch("batch-001", product, 100, nil)
+			sku := "SMALL-TABLE"
+			batch := domain.NewBatch("batch-001", sku, 100, nil)
+			product := domain.NewProduct(sku, []*domain.Batch{batch}, 0)
+
 			batch.Allocations = map[domain.OrderID]domain.OrderLine{
 				orderID: {
-					Product:  product,
+					SKU:      sku,
 					Quantity: 10,
 					OrderId:  orderID,
 				},
@@ -167,10 +170,10 @@ func TestService(t *testing.T) {
 			uow := NewFakeUnitOfWorkFromRepository(repo)
 			svc := NewService(uow)
 
-			err := svc.AddBatch(ctx, batch)
+			err := svc.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
-			err = svc.Deallocate(ctx, string(orderID), product.SKU)
+			err = svc.Deallocate(ctx, orderID, sku)
 			assert.NoError(t, err)
 
 			_, ok := batch.Allocations[orderID]
@@ -185,24 +188,28 @@ func TestService(t *testing.T) {
 
 			ctx := context.Background()
 
-			product := domain.Product{SKU: "SMALL-TABLE"}
+			sku := "SMALL-TABLE"
+			otherBatch := domain.NewBatch("batch-999", sku, 100, nil)
+
 			orderLine := &domain.OrderLine{
-				Product:  product,
+				SKU:      sku,
 				Quantity: 25,
 				OrderId:  "order-001",
 			}
-
 			eta := time.Now().Add(time.Hour * 48)
-			existingBatch := domain.NewBatch("batch-001", product, 100, &eta)
+			existingBatch := domain.NewBatch("batch-001", sku, 100, &eta)
 			err := existingBatch.Allocate(orderLine)
 			assert.NoError(t, err)
 
-			err = svc.AddBatch(ctx, existingBatch)
-			assert.NoError(t, err)
+			product := domain.NewProduct(
+				sku,
+				[]*domain.Batch{
+					existingBatch,
+					otherBatch,
+				},
+				0)
 
-			otherBatch := domain.NewBatch("batch-002", product, 50, nil)
-
-			err = svc.AddBatch(ctx, otherBatch)
+			err = svc.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
 			updatedBatchRef, err := svc.Reallocate(ctx, orderLine)
@@ -214,46 +221,33 @@ func TestService(t *testing.T) {
 }
 
 type FakeRepository struct {
-	batches map[string]*domain.Batch
+	products map[string]*domain.Product
 }
 
 func NewFakeRepository() *FakeRepository {
 	return &FakeRepository{
-		batches: make(map[string]*domain.Batch),
+		products: make(map[string]*domain.Product),
 	}
 }
 
-func (r *FakeRepository) AddBatch(_ context.Context, batch *domain.Batch) error {
-	r.batches[batch.Reference] = batch
+func (r *FakeRepository) AddProduct(_ context.Context, p *domain.Product) error {
+	r.products[p.SKU] = p
 	return nil
 }
 
-func (r *FakeRepository) GetBatchByReference(_ context.Context, ref string) (*domain.Batch, error) {
-	return r.batches[ref], nil
-}
-
-func (r *FakeRepository) ListBatches(_ context.Context) ([]*domain.Batch, error) {
-	batches := make([]*domain.Batch, 0, len(r.batches))
-	for _, batch := range r.batches {
-		batches = append(batches, batch)
-	}
-	return batches, nil
-}
-
-func (r *FakeRepository) GetBatchBySku(_ context.Context, sku string) (*domain.Batch, error) {
-	for _, batch := range r.batches {
-		if batch.Product.SKU == sku {
-			return batch, nil
+func (r *FakeRepository) GetProduct(_ context.Context, sku string) (*domain.Product, error) {
+	for _, p := range r.products {
+		if p.SKU == sku {
+			return r.products[p.SKU], nil
 		}
 	}
-	return nil, errors.New("sku not found in the fake in memory database")
+	return nil, repository.ErrProductNotFound
 }
 
-func (r *FakeRepository) UpdateBatch(
+func (r *FakeRepository) UpdateProduct(
 	_ context.Context,
-	existingB *domain.Batch,
-	updatedB *domain.Batch,
+	p *domain.Product,
 ) error {
-	r.batches[existingB.Reference] = updatedB
+	r.products[p.SKU] = p
 	return nil
 }

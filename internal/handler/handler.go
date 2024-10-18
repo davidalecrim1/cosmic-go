@@ -45,16 +45,15 @@ func (h *Handler) Allocate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	product := domain.Product{SKU: reqBody.SKU}
 	line := &domain.OrderLine{
-		Product:  product,
+		SKU:      reqBody.SKU,
 		Quantity: reqBody.Quantity,
 		OrderId:  domain.OrderID(reqBody.OrderID),
 	}
 
 	batchref, err := h.svc.Allocate(ctx, line)
 
-	if errors.Is(err, application.ErrInvalidSku) {
+	if errors.Is(err, application.ErrProductNotFound) {
 		w.WriteHeader(http.StatusBadRequest)
 
 		response := &BadRequestResponse{
@@ -104,8 +103,8 @@ func (h *Handler) Deallocate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.svc.Deallocate(ctx, reqBody.OrderID, reqBody.SKU)
-	if errors.Is(err, application.ErrInvalidSku) || errors.Is(err, application.ErrInvalidOrderID) {
+	err := h.svc.Deallocate(ctx, domain.OrderID(reqBody.OrderID), reqBody.SKU)
+	if errors.Is(err, application.ErrProductNotFound) || errors.Is(err, application.ErrInvalidOrderID) {
 		w.WriteHeader(http.StatusBadRequest)
 
 		response := &BadRequestResponse{
@@ -127,11 +126,11 @@ func (h *Handler) Deallocate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (h *Handler) AddBatch(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) AddProduct(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
-	reqBody := &AddBatchRequest{}
+	reqBody := &AddProductRequest{}
 
 	if err := json.NewDecoder(r.Body).Decode(reqBody); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -146,14 +145,24 @@ func (h *Handler) AddBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	batch := domain.NewBatch(
-		reqBody.Reference,
-		domain.Product(reqBody.Product),
-		reqBody.PurchasedQuantity,
-		&reqBody.ETA,
+	var batches []*domain.Batch = make([]*domain.Batch, 0, len(reqBody.Batches))
+	for _, dto := range reqBody.Batches {
+		batch := domain.NewBatch(
+			dto.Reference,
+			reqBody.SKU,
+			dto.PurchasedQuantity,
+			dto.ETA,
+		)
+		batches = append(batches, batch)
+	}
+
+	product := domain.NewProduct(
+		reqBody.SKU,
+		batches,
+		0,
 	)
 
-	err := h.svc.AddBatch(ctx, batch)
+	err := h.svc.AddProduct(ctx, product)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Println("unexpected error: ", err)
