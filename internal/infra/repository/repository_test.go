@@ -12,11 +12,11 @@ import (
 	"cosmic-go/internal/infra/database"
 	"cosmic-go/test/helpers"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
+	"gorm.io/gorm"
 )
 
-var db *pgxpool.Pool
+var db *gorm.DB
 
 func TestMain(m *testing.M) {
 	db = database.InitializeDatabase()
@@ -30,15 +30,15 @@ func TestRepository(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			tx, err := db.Begin(ctx)
-			assert.NoError(t, err)
+			tx := db.WithContext(ctx).Begin()
+			assert.NoError(t, tx.Error)
 			repoCreate := NewPostgresRepository(tx)
 
 			sku := "SMALL-TABLE"
 			batch := domain.NewBatch("batch-001", sku, 10, nil)
 			product := domain.NewProduct(sku, []*domain.Batch{batch}, 0)
 
-			err = repoCreate.AddProduct(ctx, product)
+			err := repoCreate.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
 			resultedProduct, err := repoCreate.GetProduct(ctx, sku)
@@ -47,7 +47,7 @@ func TestRepository(t *testing.T) {
 			assert.Equal(t, product, resultedProduct)
 
 			t.Cleanup(func() {
-				tx.Commit(ctx)
+				tx.WithContext(ctx).Commit()
 				helpers.CleanUpRepositoryHelper(db)
 			})
 		})
@@ -55,8 +55,8 @@ func TestRepository(t *testing.T) {
 	t.Run("get a product with batches and allocations",
 		func(t *testing.T) {
 			ctx := context.Background()
-			tx, err := db.Begin(ctx)
-			assert.NoError(t, err)
+			tx := db.WithContext(ctx).Begin()
+			assert.NoError(t, tx.Error)
 			repoCreate := NewPostgresRepository(tx)
 
 			sku := "SMALL-TABLE"
@@ -81,7 +81,7 @@ func TestRepository(t *testing.T) {
 				Quantity: 25,
 			}
 
-			err = initialBatch.Allocate(firstOrder)
+			err := initialBatch.Allocate(firstOrder)
 			assert.NoError(t, err)
 
 			err = initialBatch.Allocate(secondOrder)
@@ -98,7 +98,7 @@ func TestRepository(t *testing.T) {
 			assert.EqualExportedValues(t, product, resultedProduct)
 
 			t.Cleanup(func() {
-				tx.Commit(ctx)
+				tx.WithContext(ctx).Commit()
 				helpers.CleanUpRepositoryHelper(db)
 			})
 		})
@@ -106,8 +106,8 @@ func TestRepository(t *testing.T) {
 	t.Run("get product with no allocations",
 		func(t *testing.T) {
 			ctx := context.Background()
-			tx, err := db.Begin(ctx)
-			assert.NoError(t, err)
+			tx := db.WithContext(ctx).Begin()
+			assert.NoError(t, tx.Error)
 			repoCreate := NewPostgresRepository(tx)
 
 			createdBatches := 2
@@ -120,7 +120,7 @@ func TestRepository(t *testing.T) {
 			batchTwo := domain.NewBatch("batch-002", sku, 100, &etaTwo)
 
 			product := domain.NewProduct(sku, []*domain.Batch{batchOne, batchTwo}, 0)
-			err = repoCreate.AddProduct(ctx, product)
+			err := repoCreate.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
 			resultedProduct, err := repoCreate.GetProduct(ctx, sku)
@@ -128,7 +128,7 @@ func TestRepository(t *testing.T) {
 			assert.Equal(t, len(resultedProduct.Batches), createdBatches)
 
 			t.Cleanup(func() {
-				tx.Commit(ctx)
+				tx.WithContext(ctx).Commit()
 				helpers.CleanUpRepositoryHelper(db)
 			})
 		})
@@ -136,8 +136,8 @@ func TestRepository(t *testing.T) {
 	t.Run("get product wth batch with allocations by sku",
 		func(t *testing.T) {
 			ctx := context.Background()
-			tx, err := db.Begin(ctx)
-			assert.NoError(t, err)
+			tx := db.WithContext(ctx).Begin()
+			assert.NoError(t, tx.Error)
 			repoCreate := NewPostgresRepository(tx)
 
 			eta := time.Now()
@@ -161,7 +161,7 @@ func TestRepository(t *testing.T) {
 				OrderId:  "order-002",
 			}
 
-			err = initialBatch.Allocate(firstOrder)
+			err := initialBatch.Allocate(firstOrder)
 			assert.NoError(t, err)
 
 			err = initialBatch.Allocate(secondOrder)
@@ -179,15 +179,15 @@ func TestRepository(t *testing.T) {
 			assert.EqualExportedValues(t, product, resultedProduct)
 
 			t.Cleanup(func() {
-				tx.Commit(ctx)
+				tx.WithContext(ctx).Commit()
 				helpers.CleanUpRepositoryHelper(db)
 			})
 		})
 
 	t.Run("update a product with new allocation", func(t *testing.T) {
 		ctx := context.Background()
-		tx, err := db.Begin(ctx)
-		assert.NoError(t, err)
+		tx := db.WithContext(ctx).Begin()
+		assert.NoError(t, tx.Error)
 		repoCreate := NewPostgresRepository(tx)
 
 		eta := time.Now()
@@ -197,13 +197,13 @@ func TestRepository(t *testing.T) {
 			domain.NewBatch("batch-002", "SMALL-TABLE", 100, &eta),
 		}, 0)
 
-		err = repoCreate.AddProduct(ctx, initialProduct)
+		err := repoCreate.AddProduct(ctx, initialProduct)
 		assert.NoError(t, err)
 
-		assert.NoError(t, tx.Commit(ctx))
+		assert.NoError(t, tx.WithContext(ctx).Commit().Error)
 
-		tx, err = db.Begin(ctx)
-		assert.NoError(t, err)
+		tx = db.WithContext(ctx).Begin()
+		assert.NoError(t, tx.Error)
 		repoUpdate := NewPostgresRepository(tx)
 
 		updatedProduct := *initialProduct
@@ -222,15 +222,15 @@ func TestRepository(t *testing.T) {
 		assert.EqualExportedValues(t, initialProduct, resultedProduct)
 
 		t.Cleanup(func() {
-			tx.Commit(ctx)
+			tx.WithContext(ctx).Commit()
 			helpers.CleanUpRepositoryHelper(db)
 		})
 	})
 
 	t.Run("update a product with deallocation", func(t *testing.T) {
 		ctx := context.Background()
-		tx, err := db.Begin(ctx)
-		assert.NoError(t, err)
+		tx := db.WithContext(ctx).Begin()
+		assert.NoError(t, tx.Error)
 		repoCreate := NewPostgresRepository(tx)
 
 		eta := time.Now()
@@ -240,18 +240,20 @@ func TestRepository(t *testing.T) {
 			domain.NewBatch("batch-002", "SMALL-TABLE", 100, &eta),
 		}, 0)
 
-		initialProduct.Allocate(&domain.OrderLine{
+		_, err := initialProduct.Allocate(&domain.OrderLine{
 			OrderId:  "order-001",
 			SKU:      "SMALL-TABLE",
 			Quantity: 25,
 		})
+		assert.NoError(t, err)
 
 		err = repoCreate.AddProduct(ctx, initialProduct)
 		assert.NoError(t, err)
-		assert.NoError(t, tx.Commit(ctx))
-
-		tx, err = db.Begin(ctx)
+		err = tx.WithContext(ctx).Commit().Error
 		assert.NoError(t, err)
+
+		tx = db.WithContext(ctx).Begin()
+		assert.NoError(t, tx.Error)
 		repoUpdate := NewPostgresRepository(tx)
 
 		updatedProduct := initialProduct
@@ -267,7 +269,7 @@ func TestRepository(t *testing.T) {
 		assert.EqualExportedValues(t, updatedProduct, resultedProduct)
 
 		t.Cleanup(func() {
-			tx.Commit(ctx)
+			tx.WithContext(ctx).Commit()
 			helpers.CleanUpRepositoryHelper(db)
 		})
 	})

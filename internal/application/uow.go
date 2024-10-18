@@ -2,13 +2,11 @@ package application
 
 import (
 	"context"
-	"errors"
 
 	"cosmic-go/internal/domain"
 	"cosmic-go/internal/infra/repository"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/gorm"
 )
 
 type Repository interface {
@@ -22,42 +20,19 @@ type Adapters struct {
 }
 
 type BatchUoW struct {
-	db *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewBatchUnitOfWork(db *pgxpool.Pool) *BatchUoW {
+func NewBatchUnitOfWork(db *gorm.DB) *BatchUoW {
 	return &BatchUoW{db: db}
 }
 
 func (u *BatchUoW) Transact(ctx context.Context, txFunc func(adapters Adapters) error) error {
-	return runWithTransaction(ctx, u.db, func(tx pgx.Tx) error {
+	return u.db.Transaction(func(tx *gorm.DB) error {
 		adapters := Adapters{
 			Repository: repository.NewPostgresRepository(tx),
 		}
 
 		return txFunc(adapters)
 	})
-}
-
-func runWithTransaction(
-	ctx context.Context,
-	db *pgxpool.Pool,
-	fn func(tx pgx.Tx) error,
-) error {
-	tx, err := db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-
-	err = fn(tx)
-	if err == nil {
-		return tx.Commit(ctx)
-	}
-
-	rollbackErr := tx.Rollback(ctx)
-	if rollbackErr != nil {
-		return errors.Join(err, rollbackErr)
-	}
-
-	return err
 }

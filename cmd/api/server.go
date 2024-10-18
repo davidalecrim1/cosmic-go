@@ -10,7 +10,10 @@ import (
 
 func main() {
 	db := database.InitializeDatabase()
-	defer db.Close()
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
 
 	router := server.InitializeServer(db)
 	err := http.ListenAndServe(":8080", router)

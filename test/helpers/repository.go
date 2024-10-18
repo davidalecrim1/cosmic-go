@@ -5,18 +5,18 @@ import (
 	"log"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/gorm"
 )
 
-func CleanUpRepositoryHelper(db *pgxpool.Pool) {
+func CleanUpRepositoryHelper(db *gorm.DB) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	tx, err := db.Begin(ctx)
-	if err != nil {
-		log.Fatalf("error creating transaction: %v", err)
+	tx := db.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		log.Fatalf("error creating transaction: %v", tx.Error)
 	}
-	defer tx.Rollback(ctx)
+	defer tx.WithContext(ctx).Rollback()
 
 	query := `
 		DELETE FROM allocations;
@@ -24,13 +24,11 @@ func CleanUpRepositoryHelper(db *pgxpool.Pool) {
 		DELETE FROM batches;
 		DELETE FROM products;
 		`
-	_, err = tx.Exec(ctx, query)
-	if err != nil {
+	if err := tx.WithContext(ctx).Exec(query).Error; err != nil {
 		log.Fatalf("error cleaning up database: %v", err)
 	}
 
-	err = tx.Commit(ctx)
-	if err != nil {
+	if err := tx.WithContext(ctx).Commit().Error; err != nil {
 		log.Fatalf("failed on commit: %v", err)
 	}
 }

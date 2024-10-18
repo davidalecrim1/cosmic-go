@@ -11,11 +11,11 @@ import (
 	"cosmic-go/internal/infra/repository"
 	"cosmic-go/test/helpers"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
+	"gorm.io/gorm"
 )
 
-var db *pgxpool.Pool
+var db *gorm.DB
 
 func TestMain(m *testing.M) {
 	db = database.InitializeDatabase()

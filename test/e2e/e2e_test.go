@@ -17,19 +17,22 @@ import (
 	"cosmic-go/internal/server"
 	"cosmic-go/test/helpers"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
+	"gorm.io/gorm"
 )
 
 var (
-	db     *pgxpool.Pool
+	db     *gorm.DB
 	ts     *httptest.Server
 	router *http.ServeMux
 )
 
 func TestMain(m *testing.M) {
 	db = database.InitializeDatabase()
-	defer db.Close()
+	defer func() {
+		sqlDB, _ := db.DB()
+		sqlDB.Close()
+	}()
 
 	router = server.InitializeServer(db)
 	ts = httptest.NewServer(router)
