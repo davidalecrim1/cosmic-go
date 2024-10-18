@@ -315,3 +315,65 @@ If the Repository pattern is our abstraction over the idea of persistent storage
 ```
 
 In Go the Unit of Work doesn't seem to make sense it is in the book. With `pgxpool` we can reuse the connections on the database, and the hard thing is orchestrate transactions. I will create the [UoW based on this article](https://threedots.tech/post/database-transactions-in-go/).
+
+
+## Chapter 07: Aggregates and Consistency Boundaries
+```
+Adding the Product aggregate shows a preview of where we’re headed: we’ll introduce a new model object called Product to wrap multiple batches, and we’ll make the old allocate() domain service available as a method on Product instead.
+```
+
+### Invariants, Concurrency, and Locks
+```
+We usually solve this problem by applying locks to our database tables. This prevents two operations from happening simultaneously on the same row or same table.
+
+As we start to think about scaling up our app, we realize that our model of allocating lines against all available batches may not scale. If we process tens of thousands of orders per hour, and hundreds of thousands of order lines, we can’t hold a lock over the whole batches table for every single one—​we’ll get deadlocks or performance problems at the very least.
+```
+
+This is the classic optimistic locking versus pessimist locking.
+
+```
+The Aggregate pattern is a design pattern from the DDD community that helps us to resolve this tension. An aggregate is just a domain object that contains other domain objects and lets us treat the whole collection as a single unit.
+
+The only way to modify the objects inside the aggregate is to load the whole thing, and to call methods on the aggregate itself.
+
+An AGGREGATE is a cluster of associated objects that we treat as a unit for the purpose of data changes. - Eric Evans on DDD.
+
+Per Evans, our aggregate has a root entity (the Cart) that encapsulates access to items. Each item has its own identity, but other parts of the system will always refer to the Cart only as an indivisible whole.
+```
+
+### Choosing an Aggregate
+```
+What aggregate should we use for our system? The choice is somewhat arbitrary, but it’s important. The aggregate will be the boundary where we make sure every operation ends in a consistent state. This helps us to reason about our software and prevent weird race issues. We want to draw a boundary around a small number of objects—the smaller, the better, for performance—that have to be consistent with one another, and we need to give this boundary a good name.
+```
+
+This DDD thinking in this chapter is great. It's worth a review and practice.
+
+```
+This Product might not look like what you’d expect a Product model to look like. No price, no description, no dimensions. Our allocation service doesn’t care about any of those things. This is the power of bounded contexts; the concept of a product in one app can be very different from another. See the following sidebar for more discussion.
+
+In our example, the allocation service has Product(sku, batches), whereas the ecommerce will have Product(sku, description, price, image_url, dimensions, etc…​). As a rule of thumb, your domain models should include only the data that they need for performing calculations.
+```
+
+### One Aggregate = One Repository
+```
+The rule that repositories should only return aggregates is the main place where we enforce the convention that aggregates are the only way into our domain model. Be wary of breaking it!
+```
+
+I see in this chapter that there is not "right" way to model a domain. You can have two developer create distinct domains and if both are performant and scalable, that's fine. That also means there will be domain models poorly designed. Maybe because the absense of knowledge by the developer or thinking it throw with TDD.
+
+```
+Version numbers are just one way to implement optimistic locking. You could achieve the same thing by setting the Postgres transaction isolation level to SERIALIZABLE, but that often comes at a severe performance cost. Version numbers also make implicit concepts explicit.
+```
+
+```
+Pessimistic concurrency control works under the assumption that two users are going to cause conflicts, and we want to prevent conflicts in all cases, so we lock everything just to be safe. In our example, that would mean locking the whole batches table, or using SELECT FOR UPDATE—we’re pretending that we’ve ruled those out for performance reasons, but in real life you’d want to do some evaluations and measurements of your own.
+
+With pessimistic locking, you don’t need to think about handling failures because the database will prevent them for you (although you do need to think about deadlocks). With optimistic locking, you need to explicitly handle the possibility of failures in the (hopefully unlikely) case of a clash.
+```
+
+I myself believe that SELECT FOR UPDATE works fine in most cases.
+
+
+
+
+
