@@ -49,7 +49,15 @@ func (r *PostgresRepository) UpdateProduct(
 	p *domain.Product,
 ) error {
 	dto := r.mapProductToDTO(p)
-	return r.db.WithContext(ctx).Save(dto).Error
+	CurrentVersionId := dto.VersionId - 1 // this is increased in the domain previously.
+
+	return r.db.
+		WithContext(ctx).
+		Session(&gorm.Session{FullSaveAssociations: true}).
+		Preload("Batch.Allocation.OrderLine").
+		Where("version_id = ?", CurrentVersionId).
+		Save(dto).
+		Error
 }
 
 func (r *PostgresRepository) mapProductToDTO(p *domain.Product) *database.Product {

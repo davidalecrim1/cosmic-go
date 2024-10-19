@@ -371,7 +371,13 @@ Pessimistic concurrency control works under the assumption that two users are go
 With pessimistic locking, you don’t need to think about handling failures because the database will prevent them for you (although you do need to think about deadlocks). With optimistic locking, you need to explicitly handle the possibility of failures in the (hopefully unlikely) case of a clash.
 ```
 
-I myself believe that SELECT FOR UPDATE works fine in most cases.
+I myself believe that SELECT FOR UPDATE works fine in most cases. When I was implementing this, the version_id seems faulty and can be messed up be the developer.
+
+### Some Thoughts on Using ORM
+
+The same pain I had for writing SQL statements I had on defining and getting the ORM to work. I myself like the idea of using raw SQL, but I do believe the ORM is worth my attetion and some more tests in the future. I've needed to add a BeforeSave hook on the ORM to make sure the deallocation works. I'm not familiar if this if an issue only with GORM, or most ORMs.
+
+Later I found out that I can preload the data, and use the feature `FullSaveAssociations` to do that automatically.
 
 
 

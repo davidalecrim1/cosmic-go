@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"sync"
 	"testing"
 
 	"cosmic-go/internal/domain"
@@ -103,6 +104,76 @@ func TestUnitOfWork(t *testing.T) {
 			helpers.CleanUpRepositoryHelper(db)
 		})
 	})
+
+	t.Run("similate concorrent updates to version not allowed",
+		func(t *testing.T) {
+			helpers.CleanUpRepositoryHelper(db)
+			ctx := context.Background()
+			uow := NewBatchUnitOfWork(db)
+
+			sku := "ROUND-TABLE"
+			product := domain.NewProduct(sku, []*domain.Batch{domain.NewBatch(
+				"batch-001",
+				sku,
+				100,
+				nil,
+			)}, 0)
+
+			_ = uow.Transact(ctx, func(adapters Adapters) error {
+				err := adapters.Repository.AddProduct(ctx, product)
+				assert.NoError(t, err)
+				return nil
+			})
+
+			var resultedProduct *domain.Product
+			_ = uow.Transact(ctx, func(adapters Adapters) (err error) {
+				resultedProduct, err = adapters.Repository.GetProduct(ctx, sku)
+				assert.NoError(t, err)
+				assert.Len(t, resultedProduct.Batches, 1)
+				return nil
+			})
+
+			concorrentAllocateOperation := func(product domain.Product) error {
+				return uow.Transact(ctx, func(adapters Adapters) error {
+					_, err := product.Allocate(&domain.OrderLine{
+						OrderId:  "order-001",
+						SKU:      product.SKU,
+						Quantity: 10,
+					})
+					assert.NoError(t, err)
+					return adapters.Repository.UpdateProduct(ctx, &product)
+				})
+			}
+
+			var wg sync.WaitGroup
+			for i := 0; i < 30; i++ {
+				wg.Add(1)
+
+				go func(wg *sync.WaitGroup) {
+					defer wg.Done()
+
+					err := concorrentAllocateOperation(*resultedProduct)
+					if err != nil {
+						t.Logf("expected error on concurrent operation: %v", err)
+					}
+				}(&wg)
+			}
+			wg.Wait()
+
+			_ = uow.Transact(ctx, func(adapters Adapters) error {
+				product, err := adapters.Repository.GetProduct(ctx, sku)
+				assert.NoError(t, err)
+
+				assert.Equal(t, 90, product.Batches[0].AvailableQuantity())
+				assert.Equal(t, 1, product.VersionId, "ensure that it was updated only once")
+
+				return nil
+			})
+
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
+		})
 }
 
 type FakeUoW struct {

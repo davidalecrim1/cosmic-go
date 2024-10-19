@@ -26,37 +26,6 @@ type Batch struct {
 	DeletedAt         gorm.DeletedAt `gorm:"index"`
 }
 
-func (b *Batch) BeforeSave(tx *gorm.DB) (err error) {
-	deleteDeallocatedOrderLinesFromBatch(b, tx)
-	return nil
-}
-
-func deleteDeallocatedOrderLinesFromBatch(b *Batch, tx *gorm.DB) error {
-	existingAllocations := []*Allocation{}
-	err := tx.Where("batch_reference = ?", b.Reference).Find(&existingAllocations).Error
-	if err != nil {
-		return err
-	}
-
-	if len(b.Allocations) == 0 {
-		tx.Where("batch_reference = ?", b.Reference).Delete(&existingAllocations)
-		return nil
-	}
-
-	updatedAllocations := make(map[string]struct{})
-	for _, alloc := range b.Allocations {
-		updatedAllocations[alloc.OrderLine.OrderId] = struct{}{}
-	}
-
-	for _, alloc := range existingAllocations {
-		if _, ok := updatedAllocations[alloc.OrderLine.OrderId]; !ok {
-			tx.Where("batch_reference = ?", b.Reference).Where("id = ?", alloc.ID).Delete(&alloc)
-		}
-	}
-
-	return nil
-}
-
 type Allocation struct {
 	ID             uint
 	OrderLineID    uint       // Foreign key to OrderLine
