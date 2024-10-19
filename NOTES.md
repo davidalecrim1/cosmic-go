@@ -379,7 +379,17 @@ The same pain I had for writing SQL statements I had on defining and getting the
 
 Later I found out that I can preload the data, and use the feature `FullSaveAssociations` to do that automatically.
 
+GORM has a way to handle deletions automatically when updating associated slices. This feature leverages the Association mode, where GORM manages the changes between the current and new state of the associations, including deletions.
 
+To delete items automatically from an associated slice that have been removed, you need to use the Select or Omit methods when saving your model. By default, GORM does not automatically delete removed associations to prevent accidental data loss. Instead, you explicitly need to tell GORM to update the association.
 
+### Wrap Up
+```
+Choosing the right aggregate is key, and it’s a decision you may revisit over time. You can read more about it in multiple DDD books. We also recommend these three online papers on effective aggregate design by Vaughn Vernon (the "red book" author).
+```
 
+```
+At the risk of laboring the point—​we’ve been at pains to point out that each pattern comes at a cost. Each layer of indirection has a price in terms of complexity and duplication in our code and will be confusing to programmers who’ve never seen these patterns before. If your app is essentially a simple CRUD wrapper around a database and isn’t likely to be anything more than that in the foreseeable future, you don’t need these patterns. Go ahead and use Django, and save yourself a lot of bother.
+```
 
+I agree with this. Simple CRUD should be simple, the repository and UoW patterns with this TDD comes with costs. If we respect the Dependency Inversion Principle and our code is easy to test, then it's fine.
