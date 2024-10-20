@@ -13,6 +13,65 @@ var (
 	ErrOutOfStock                           = errors.New("out of stock")
 )
 
+type Product struct {
+	SKU       string
+	Batches   []*Batch
+	VersionId int
+}
+
+func NewProduct(sku string, batches []*Batch, versionId int) *Product {
+	return &Product{
+		SKU:       sku,
+		Batches:   batches,
+		VersionId: versionId,
+	}
+}
+
+func (p *Product) Allocate(ol *OrderLine) (reference string, err error) {
+	sortBasedOnEarliestETA := func(i, j int) bool {
+		// no ETA (nil) is the earliest because the batch is in stock
+		if p.Batches[i].isInStock() {
+			return true
+		}
+
+		if p.Batches[j].isInStock() {
+			return false
+		}
+
+		return p.Batches[i].eta.Before(*p.Batches[j].eta)
+	}
+
+	sort.Slice(p.Batches, sortBasedOnEarliestETA)
+
+	for _, batch := range p.Batches {
+		err = batch.Allocate(ol)
+		if errors.Is(err, ErrOrderLinesOverBatch) {
+			continue
+		}
+
+		if err != nil {
+			return "", err
+		}
+
+		p.VersionId++
+		return batch.Reference, nil
+	}
+
+	return "", ErrOutOfStock
+}
+
+func (p *Product) Deallocate(orderid OrderID) error {
+	for _, b := range p.Batches {
+		for _, allocOrderLine := range b.Allocations {
+			if allocOrderLine.OrderId == OrderID(orderid) {
+				return b.Deallocate(&allocOrderLine)
+			}
+		}
+	}
+
+	return ErrCannotDeallocateUnallocatedOrderLine
+}
+
 type OrderID string
 
 type OrderLine struct {
@@ -88,63 +147,4 @@ func (b *Batch) AvailableQuantity() int {
 
 func (b *Batch) isInStock() bool {
 	return b.eta == nil
-}
-
-type Product struct {
-	SKU       string
-	Batches   []*Batch
-	VersionId int
-}
-
-func NewProduct(sku string, batches []*Batch, versionId int) *Product {
-	return &Product{
-		SKU:       sku,
-		Batches:   batches,
-		VersionId: versionId,
-	}
-}
-
-func (p *Product) Allocate(ol *OrderLine) (reference string, err error) {
-	sortBasedOnEarliestETA := func(i, j int) bool {
-		// no ETA (nil) is the earliest because the batch is in stock
-		if p.Batches[i].isInStock() {
-			return true
-		}
-
-		if p.Batches[j].isInStock() {
-			return false
-		}
-
-		return p.Batches[i].eta.Before(*p.Batches[j].eta)
-	}
-
-	sort.Slice(p.Batches, sortBasedOnEarliestETA)
-
-	for _, batch := range p.Batches {
-		err = batch.Allocate(ol)
-		if errors.Is(err, ErrOrderLinesOverBatch) {
-			continue
-		}
-
-		if err != nil {
-			return "", err
-		}
-
-		p.VersionId++
-		return batch.Reference, nil
-	}
-
-	return "", ErrOutOfStock
-}
-
-func (p *Product) Deallocate(orderid OrderID) error {
-	for _, b := range p.Batches {
-		for _, allocOrderLine := range b.Allocations {
-			if allocOrderLine.OrderId == OrderID(orderid) {
-				return b.Deallocate(&allocOrderLine)
-			}
-		}
-	}
-
-	return ErrCannotDeallocateUnallocatedOrderLine
 }
