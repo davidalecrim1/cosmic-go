@@ -106,9 +106,10 @@ func TestDomainModel(t *testing.T) {
 
 			product := NewProduct("ELEC-TRUMPET", []*Batch{batch}, 0)
 			_, err := product.Allocate(line)
-			assert.NoError(t, err)
+			assert.NoError(t, err, "should allocate as expected")
+
 			_, err = product.Allocate(anotherLine)
-			assert.ErrorIs(t, err, ErrOrderLinesOverBatch)
+			assert.ErrorIs(t, err, ErrOutOfStock, "make sure we are out of stock")
 		})
 }
 

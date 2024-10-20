@@ -10,6 +10,7 @@ var (
 	ErrOrderLinesOverBatch                  = errors.New("the order lines are over the available quantity in batch")
 	ErrProductSkuMismatch                   = errors.New("product sku mismatch in batch")
 	ErrCannotDeallocateUnallocatedOrderLine = errors.New("cannot deallocate unallocated order line")
+	ErrOutOfStock                           = errors.New("out of stock")
 )
 
 type OrderID string
@@ -72,10 +73,6 @@ func (b *Batch) Deallocate(line *OrderLine) error {
 		return ErrCannotDeallocateUnallocatedOrderLine
 	}
 
-	if b.AvailableQuantity() < line.Quantity {
-		return ErrOrderLinesOverBatch
-	}
-
 	delete(b.Allocations, line.OrderId)
 	return nil
 }
@@ -122,13 +119,22 @@ func (p *Product) Allocate(ol *OrderLine) (reference string, err error) {
 	}
 
 	sort.Slice(p.Batches, sortBasedOnEarliestETA)
-	err = p.Batches[0].Allocate(ol)
-	if err != nil {
-		return "", err
+
+	for _, batch := range p.Batches {
+		err = batch.Allocate(ol)
+		if errors.Is(err, ErrOrderLinesOverBatch) {
+			continue
+		}
+
+		if err != nil {
+			return "", err
+		}
+
+		p.VersionId++
+		return batch.Reference, nil
 	}
 
-	p.VersionId++
-	return p.Batches[0].Reference, nil
+	return "", ErrOutOfStock
 }
 
 func (p *Product) Deallocate(orderid OrderID) error {
