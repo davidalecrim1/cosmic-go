@@ -1,15 +1,19 @@
 //go:build integration
 
-package repository
+package integration
 
 import (
 	"context"
+	"errors"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
+	"cosmic-go/internal/application"
 	"cosmic-go/internal/domain"
 	"cosmic-go/internal/infra/database"
+	"cosmic-go/internal/infra/repository"
 	"cosmic-go/test/helpers"
 
 	"github.com/stretchr/testify/assert"
@@ -25,6 +29,157 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func TestUnitOfWork(t *testing.T) {
+	t.Run("run a valid transaction with uow on repository", func(t *testing.T) {
+		ctx := context.Background()
+		uow := application.NewBatchUnitOfWork(db)
+
+		sku := "ROUND-TABLE"
+		product := domain.NewProduct(sku, []*domain.Batch{domain.NewBatch(
+			"batch-001",
+			sku,
+			10,
+			nil,
+		)}, 0)
+
+		_ = uow.Transact(ctx, func(adapters application.Adapters) error {
+			err := adapters.Repository.AddProduct(ctx, product)
+			assert.NoError(t, err)
+
+			resultedProduct, err := adapters.Repository.GetProduct(ctx, sku)
+			assert.Len(t, resultedProduct.Batches, 1)
+			assert.NoError(t, err)
+			return err
+		})
+
+		ensureTransactionWasCommited := func() error {
+			return uow.Transact(ctx, func(adapters application.Adapters) error {
+				product, err := adapters.Repository.GetProduct(ctx, sku)
+				assert.NoError(t, err)
+				assert.Len(t, product.Batches, 1)
+				return err
+			})
+		}
+
+		err := ensureTransactionWasCommited()
+		assert.NoError(t, err)
+
+		t.Cleanup(func() {
+			helpers.CleanUpRepositoryHelper(db)
+		})
+	})
+
+	t.Run("run a transaction that results in rollback", func(t *testing.T) {
+		ctx := context.Background()
+		uow := application.NewBatchUnitOfWork(db)
+
+		sku := "ROUND-TABLE"
+		product := domain.NewProduct(sku, []*domain.Batch{domain.NewBatch(
+			"batch-001",
+			sku,
+			10,
+			nil,
+		)}, 0)
+
+		expectedErr := uow.Transact(ctx, func(adapters application.Adapters) error {
+			err := adapters.Repository.AddProduct(ctx, product)
+			assert.NoError(t, err)
+
+			product, err := adapters.Repository.GetProduct(ctx, sku)
+			assert.NoError(t, err)
+			assert.Len(t, product.Batches, 1)
+
+			return errors.New("must rollback this transaction because err is not nil")
+		})
+		assert.Error(t, expectedErr)
+
+		ensureTransactionWasRolledBack := func() error {
+			return uow.Transact(ctx, func(adapters application.Adapters) error {
+				product, err := adapters.Repository.GetProduct(ctx, sku)
+				assert.Nil(t, product)
+				return err
+			})
+		}
+
+		err := ensureTransactionWasRolledBack()
+		assert.ErrorIs(t, err, repository.ErrProductNotFound)
+
+		t.Cleanup(func() {
+			helpers.CleanUpRepositoryHelper(db)
+		})
+	})
+
+	t.Run("similate concorrent updates to version not allowed",
+		func(t *testing.T) {
+			helpers.CleanUpRepositoryHelper(db)
+			ctx := context.Background()
+			uow := application.NewBatchUnitOfWork(db)
+
+			sku := "ROUND-TABLE"
+			product := domain.NewProduct(sku, []*domain.Batch{domain.NewBatch(
+				"batch-001",
+				sku,
+				100,
+				nil,
+			)}, 0)
+
+			_ = uow.Transact(ctx, func(adapters application.Adapters) error {
+				err := adapters.Repository.AddProduct(ctx, product)
+				assert.NoError(t, err)
+				return nil
+			})
+
+			var resultedProduct *domain.Product
+			_ = uow.Transact(ctx, func(adapters application.Adapters) (err error) {
+				resultedProduct, err = adapters.Repository.GetProduct(ctx, sku)
+				assert.NoError(t, err)
+				assert.Len(t, resultedProduct.Batches, 1)
+				return nil
+			})
+
+			concorrentAllocateOperation := func(product domain.Product) error {
+				return uow.Transact(ctx, func(adapters application.Adapters) error {
+					_, err := product.Allocate(&domain.OrderLine{
+						OrderId:  "order-001",
+						SKU:      product.SKU,
+						Quantity: 10,
+					})
+					assert.NoError(t, err)
+					return adapters.Repository.UpdateProduct(ctx, &product)
+				})
+			}
+
+			var wg sync.WaitGroup
+			for i := 0; i < 30; i++ {
+				wg.Add(1)
+
+				go func(wg *sync.WaitGroup) {
+					defer wg.Done()
+
+					err := concorrentAllocateOperation(*resultedProduct)
+					if err != nil {
+						t.Logf("expected error on concurrent operation: %v", err)
+					}
+				}(&wg)
+			}
+			wg.Wait()
+
+			_ = uow.Transact(ctx, func(adapters application.Adapters) error {
+				product, err := adapters.Repository.GetProduct(ctx, sku)
+				assert.NoError(t, err)
+
+				assert.Equal(t, 90, product.Batches[0].AvailableQuantity())
+				assert.Equal(t, 1, product.VersionId, "ensure that it was updated only once")
+
+				return nil
+			})
+
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
+		})
+}
+
 func TestRepository(t *testing.T) {
 	t.Run("add a product",
 		func(t *testing.T) {
@@ -32,7 +187,7 @@ func TestRepository(t *testing.T) {
 
 			tx := db.WithContext(ctx).Begin()
 			assert.NoError(t, tx.Error)
-			repoCreate := NewPostgresRepository(tx)
+			repoCreate := repository.NewPostgresRepository(tx)
 
 			sku := "SMALL-TABLE"
 			batch := domain.NewBatch("batch-001", sku, 10, nil)
@@ -57,7 +212,7 @@ func TestRepository(t *testing.T) {
 			ctx := context.Background()
 			tx := db.WithContext(ctx).Begin()
 			assert.NoError(t, tx.Error)
-			repoCreate := NewPostgresRepository(tx)
+			repoCreate := repository.NewPostgresRepository(tx)
 
 			sku := "SMALL-TABLE"
 			eta := time.Now()
@@ -108,7 +263,7 @@ func TestRepository(t *testing.T) {
 			ctx := context.Background()
 			tx := db.WithContext(ctx).Begin()
 			assert.NoError(t, tx.Error)
-			repoCreate := NewPostgresRepository(tx)
+			repoCreate := repository.NewPostgresRepository(tx)
 
 			createdBatches := 2
 			sku := "SMALL-TABLE"
@@ -138,7 +293,7 @@ func TestRepository(t *testing.T) {
 			ctx := context.Background()
 			tx := db.WithContext(ctx).Begin()
 			assert.NoError(t, tx.Error)
-			repoCreate := NewPostgresRepository(tx)
+			repoCreate := repository.NewPostgresRepository(tx)
 
 			eta := time.Now()
 			initialSKU := "SMALL-TABLE"
@@ -188,7 +343,7 @@ func TestRepository(t *testing.T) {
 		ctx := context.Background()
 		tx := db.WithContext(ctx).Begin()
 		assert.NoError(t, tx.Error)
-		repoCreate := NewPostgresRepository(tx)
+		repoCreate := repository.NewPostgresRepository(tx)
 
 		eta := time.Now()
 
@@ -204,7 +359,7 @@ func TestRepository(t *testing.T) {
 
 		tx = db.WithContext(ctx).Begin()
 		assert.NoError(t, tx.Error)
-		repoUpdate := NewPostgresRepository(tx)
+		repoUpdate := repository.NewPostgresRepository(tx)
 
 		updatedProduct := *initialProduct
 
@@ -214,12 +369,12 @@ func TestRepository(t *testing.T) {
 			Quantity: 25,
 		})
 
-		err = repoUpdate.UpdateProduct(ctx, initialProduct)
+		err = repoUpdate.UpdateProduct(ctx, &updatedProduct)
 		assert.NoError(t, err)
 
-		resultedProduct, err := repoUpdate.GetProduct(ctx, initialProduct.SKU)
+		resultedProduct, err := repoUpdate.GetProduct(ctx, updatedProduct.SKU)
 		assert.NoError(t, err)
-		assert.EqualExportedValues(t, initialProduct, resultedProduct)
+		assert.EqualExportedValues(t, &updatedProduct, resultedProduct)
 
 		t.Cleanup(func() {
 			tx.WithContext(ctx).Commit()
@@ -231,7 +386,7 @@ func TestRepository(t *testing.T) {
 		ctx := context.Background()
 		tx := db.WithContext(ctx).Begin()
 		assert.NoError(t, tx.Error)
-		repoCreate := NewPostgresRepository(tx)
+		repoCreate := repository.NewPostgresRepository(tx)
 
 		eta := time.Now()
 
@@ -254,7 +409,7 @@ func TestRepository(t *testing.T) {
 
 		tx = db.WithContext(ctx).Begin()
 		assert.NoError(t, tx.Error)
-		repoUpdate := NewPostgresRepository(tx)
+		repoUpdate := repository.NewPostgresRepository(tx)
 
 		updatedProduct := initialProduct
 
