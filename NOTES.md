@@ -428,3 +428,5 @@ Domain events give us a way to handle workflows in our system. We often find, li
 
 The magic words "When X, then Y" often tell us about an event that we can make concrete in our system. Treating events as first-class things in our model helps us make our code more testable and observable, and it helps isolate concerns.
 ```
+
+For the Domain Events in this code, I didn't liked Option 3 using Go, it would overcomplicate with the seen method in the UoW. Therefore I decided to use Option 2 and make service layer save the events as orchestraton layer.
