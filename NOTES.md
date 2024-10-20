@@ -393,3 +393,38 @@ At the risk of laboring the point—​we’ve been at pains to point out that e
 ```
 
 I agree with this. Simple CRUD should be simple, the repository and UoW patterns with this TDD comes with costs. If we respect the Dependency Inversion Principle and our code is easy to test, then it's fine.
+
+
+## Chapter 08: Events and the Message Bus
+
+```
+Faced with this requirement, many teams reach for microservices integrated via HTTP APIs. But if they’re not careful, they’ll end up producing the most chaotic mess of all: the distributed big ball of mud.
+```
+
+```
+The requirement "Try to allocate some stock, and send an email if it fails" is an example of workflow orchestration: it’s a set of steps that the system has to follow to achieve a goal.
+```
+
+It's a nice thing to think. Orchestration layer (applicarion or service layer, what ever you call) it's the place for things like that.
+
+```
+Rule of thumb: if you can’t describe what your function does without using words like "then" or "and," you might be violating the SRP.
+```
+
+```
+One formulation of the SRP is that each class should have only a single reason to change. When we switch from email to SMS, we shouldn’t have to update our allocate() function, because that’s clearly a separate responsibility.
+```
+
+```
+We’re actually addressing a code smell we had until now, which is that we were using exceptions for control flow. In general, if you’re implementing domain events, don’t raise exceptions to describe the same domain concept. As you’ll see later when we handle events in the Unit of Work pattern, it’s confusing to have to reason about events and exceptions together.
+```
+
+```
+A message bus basically says, "When I see this event, I should invoke the following handler function." In other words, it’s a simple publish-subscribe system. Handlers are subscribed to receive events, which we publish to the bus. 
+```
+
+```
+Domain events give us a way to handle workflows in our system. We often find, listening to our domain experts, that they express requirements in a causal or temporal way—for example, "When we try to allocate stock but there’s none available, then we should send an email to the buying team.
+
+The magic words "When X, then Y" often tell us about an event that we can make concrete in our system. Treating events as first-class things in our model helps us make our code more testable and observable, and it helps isolate concerns.
+```
