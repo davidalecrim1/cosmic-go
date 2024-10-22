@@ -10,8 +10,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var ErrProductNotFound = errors.New("product not found")
-
 type PostgresRepository struct {
 	db *gorm.DB
 }
@@ -28,7 +26,7 @@ func (r *PostgresRepository) GetProduct(
 
 	if err := r.db.Preload("Batches.Allocations").Preload("Batches.Allocations.OrderLine").First(&productDTO, "sku = ?", sku).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrProductNotFound
+			return nil, domain.ErrProductNotFound
 		}
 		return nil, err
 	}

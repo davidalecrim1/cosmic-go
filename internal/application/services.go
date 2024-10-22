@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"cosmic-go/internal/domain"
+	unitofwork "cosmic-go/internal/uow"
 )
 
 var (
@@ -17,7 +18,8 @@ type Service struct {
 }
 
 type UoW interface {
-	Transact(ctx context.Context, txFunc func(adapters Adapters) error) error
+	Transact(ctx context.Context, txFunc func(adapters unitofwork.Adapters) error) error
+	AddEvent(event domain.Event)
 }
 
 func NewService(uow UoW) *Service {
@@ -27,8 +29,14 @@ func NewService(uow UoW) *Service {
 func (s *Service) Allocate(ctx context.Context, line *domain.OrderLine) (string, error) {
 	var updatedBatchRef string
 
-	err := s.uow.Transact(ctx, func(adapters Adapters) error {
+	err := s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
 		batchRef, err := s.processAllocation(ctx, line, adapters)
+
+		if errors.Is(err, domain.ErrOutOfStock) {
+			s.uow.AddEvent(&domain.OutOfStockEvent{SKU: line.SKU})
+			return err
+		}
+
 		if err != nil {
 			return err
 		}
@@ -37,16 +45,13 @@ func (s *Service) Allocate(ctx context.Context, line *domain.OrderLine) (string,
 		return err
 	})
 	if err != nil {
-		if err.Error() == "product not found" {
-			return "", ErrProductNotFound
-		}
 		return "", err
 	}
 
 	return updatedBatchRef, nil
 }
 
-func (s *Service) processAllocation(ctx context.Context, line *domain.OrderLine, adapters Adapters) (string, error) {
+func (s *Service) processAllocation(ctx context.Context, line *domain.OrderLine, adapters unitofwork.Adapters) (string, error) {
 	var updatedBatchRef string
 
 	p, err := adapters.Repository.GetProduct(ctx, line.SKU)
@@ -68,18 +73,18 @@ func (s *Service) processAllocation(ctx context.Context, line *domain.OrderLine,
 }
 
 func (s *Service) AddProduct(ctx context.Context, p *domain.Product) error {
-	return s.uow.Transact(ctx, func(adapters Adapters) error {
+	return s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
 		return adapters.Repository.AddProduct(ctx, p)
 	})
 }
 
 func (s *Service) Deallocate(ctx context.Context, orderid domain.OrderID, sku string) error {
-	return s.uow.Transact(ctx, func(adapters Adapters) error {
+	return s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
 		return s.processDeallocation(ctx, orderid, sku, adapters)
 	})
 }
 
-func (s *Service) processDeallocation(ctx context.Context, orderid domain.OrderID, sku string, adapters Adapters) error {
+func (s *Service) processDeallocation(ctx context.Context, orderid domain.OrderID, sku string, adapters unitofwork.Adapters) error {
 	p, err := adapters.Repository.GetProduct(ctx, sku)
 	if err != nil {
 		return ErrProductNotFound
@@ -99,7 +104,7 @@ func (s *Service) processDeallocation(ctx context.Context, orderid domain.OrderI
 func (s *Service) Reallocate(ctx context.Context, line *domain.OrderLine) (string, error) {
 	var updatedBatchRef string
 
-	err := s.uow.Transact(ctx, func(adapters Adapters) error {
+	err := s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
 		p, err := adapters.Repository.GetProduct(ctx, line.SKU)
 		if err != nil {
 			return err

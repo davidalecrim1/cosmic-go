@@ -10,20 +10,28 @@ import (
 	"testing"
 	"time"
 
-	"cosmic-go/internal/application"
 	"cosmic-go/internal/domain"
 	"cosmic-go/internal/infra/database"
+	"cosmic-go/internal/infra/events/handlers/email"
+	"cosmic-go/internal/infra/events/publisher"
 	"cosmic-go/internal/infra/repository"
+	unitofwork "cosmic-go/internal/uow"
 	"cosmic-go/test/helpers"
 
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 )
 
-var db *gorm.DB
+var (
+	db *gorm.DB
+	ep *publisher.EventPublisher
+)
 
 func TestMain(m *testing.M) {
 	db = database.InitializeDatabase()
+
+	ep = publisher.NewEventPublisher()
+	ep.RegisterHandler(&domain.OutOfStockEvent{}, &email.EmailService{})
 
 	code := m.Run()
 	os.Exit(code)
@@ -32,7 +40,7 @@ func TestMain(m *testing.M) {
 func TestUnitOfWork(t *testing.T) {
 	t.Run("run a valid transaction with uow on repository", func(t *testing.T) {
 		ctx := context.Background()
-		uow := application.NewBatchUnitOfWork(db)
+		uow := unitofwork.NewAllocationUnitOfWork(db, ep)
 
 		sku := "ROUND-TABLE"
 		product := domain.NewProduct(sku, []*domain.Batch{domain.NewBatch(
@@ -42,7 +50,7 @@ func TestUnitOfWork(t *testing.T) {
 			nil,
 		)}, 0)
 
-		_ = uow.Transact(ctx, func(adapters application.Adapters) error {
+		_ = uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
 			err := adapters.Repository.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
@@ -53,7 +61,7 @@ func TestUnitOfWork(t *testing.T) {
 		})
 
 		ensureTransactionWasCommited := func() error {
-			return uow.Transact(ctx, func(adapters application.Adapters) error {
+			return uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
 				product, err := adapters.Repository.GetProduct(ctx, sku)
 				assert.NoError(t, err)
 				assert.Len(t, product.Batches, 1)
@@ -71,7 +79,7 @@ func TestUnitOfWork(t *testing.T) {
 
 	t.Run("run a transaction that results in rollback", func(t *testing.T) {
 		ctx := context.Background()
-		uow := application.NewBatchUnitOfWork(db)
+		uow := unitofwork.NewAllocationUnitOfWork(db, ep)
 
 		sku := "ROUND-TABLE"
 		product := domain.NewProduct(sku, []*domain.Batch{domain.NewBatch(
@@ -81,7 +89,7 @@ func TestUnitOfWork(t *testing.T) {
 			nil,
 		)}, 0)
 
-		expectedErr := uow.Transact(ctx, func(adapters application.Adapters) error {
+		expectedErr := uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
 			err := adapters.Repository.AddProduct(ctx, product)
 			assert.NoError(t, err)
 
@@ -94,7 +102,7 @@ func TestUnitOfWork(t *testing.T) {
 		assert.Error(t, expectedErr)
 
 		ensureTransactionWasRolledBack := func() error {
-			return uow.Transact(ctx, func(adapters application.Adapters) error {
+			return uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
 				product, err := adapters.Repository.GetProduct(ctx, sku)
 				assert.Nil(t, product)
 				return err
@@ -102,7 +110,7 @@ func TestUnitOfWork(t *testing.T) {
 		}
 
 		err := ensureTransactionWasRolledBack()
-		assert.ErrorIs(t, err, repository.ErrProductNotFound)
+		assert.ErrorIs(t, err, domain.ErrProductNotFound)
 
 		t.Cleanup(func() {
 			helpers.CleanUpRepositoryHelper(db)
@@ -113,7 +121,7 @@ func TestUnitOfWork(t *testing.T) {
 		func(t *testing.T) {
 			helpers.CleanUpRepositoryHelper(db)
 			ctx := context.Background()
-			uow := application.NewBatchUnitOfWork(db)
+			uow := unitofwork.NewAllocationUnitOfWork(db, ep)
 
 			sku := "ROUND-TABLE"
 			product := domain.NewProduct(sku, []*domain.Batch{domain.NewBatch(
@@ -123,14 +131,14 @@ func TestUnitOfWork(t *testing.T) {
 				nil,
 			)}, 0)
 
-			_ = uow.Transact(ctx, func(adapters application.Adapters) error {
+			_ = uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
 				err := adapters.Repository.AddProduct(ctx, product)
 				assert.NoError(t, err)
 				return nil
 			})
 
 			var resultedProduct *domain.Product
-			_ = uow.Transact(ctx, func(adapters application.Adapters) (err error) {
+			_ = uow.Transact(ctx, func(adapters unitofwork.Adapters) (err error) {
 				resultedProduct, err = adapters.Repository.GetProduct(ctx, sku)
 				assert.NoError(t, err)
 				assert.Len(t, resultedProduct.Batches, 1)
@@ -138,7 +146,7 @@ func TestUnitOfWork(t *testing.T) {
 			})
 
 			concorrentAllocateOperation := func(product domain.Product) error {
-				return uow.Transact(ctx, func(adapters application.Adapters) error {
+				return uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
 					_, err := product.Allocate(&domain.OrderLine{
 						OrderId:  "order-001",
 						SKU:      product.SKU,
@@ -164,7 +172,7 @@ func TestUnitOfWork(t *testing.T) {
 			}
 			wg.Wait()
 
-			_ = uow.Transact(ctx, func(adapters application.Adapters) error {
+			_ = uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
 				product, err := adapters.Repository.GetProduct(ctx, sku)
 				assert.NoError(t, err)
 

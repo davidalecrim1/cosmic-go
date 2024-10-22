@@ -11,6 +11,7 @@ var (
 	ErrProductSkuMismatch                   = errors.New("product sku mismatch in batch")
 	ErrCannotDeallocateUnallocatedOrderLine = errors.New("cannot deallocate unallocated order line")
 	ErrOutOfStock                           = errors.New("out of stock")
+	ErrProductNotFound                      = errors.New("product not found")
 )
 
 type Product struct {

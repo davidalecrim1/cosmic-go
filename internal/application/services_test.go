@@ -2,14 +2,21 @@ package application
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
 	"cosmic-go/internal/domain"
-	"cosmic-go/internal/infra/repository"
+	"cosmic-go/internal/infra/events/publisher"
+	unitofwork "cosmic-go/internal/uow"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	os.Exit(code)
+}
 
 func TestService(t *testing.T) {
 	t.Run("allocate batch",
@@ -20,8 +27,10 @@ func TestService(t *testing.T) {
 			batch := domain.NewBatch("batch-001", sku, 100, nil)
 			product := domain.NewProduct(sku, []*domain.Batch{batch}, 0)
 
+			ep := publisher.NewEventPublisher()
+
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWorkFromRepository(repo)
+			uow := NewFakeUnitOfWork(repo, ep)
 			svc := NewService(uow)
 
 			err := svc.AddProduct(ctx, product)
@@ -41,8 +50,10 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
+			ep := publisher.NewEventPublisher()
+
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWorkFromRepository(repo)
+			uow := NewFakeUnitOfWork(repo, ep)
 			svc := NewService(uow)
 
 			sku := "SMALL-TABLE"
@@ -65,8 +76,10 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
+			ep := publisher.NewEventPublisher()
+
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWorkFromRepository(repo)
+			uow := NewFakeUnitOfWork(repo, ep)
 			svc := NewService(uow)
 
 			sku := "SMALL-TABLE"
@@ -86,8 +99,10 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
+			ep := publisher.NewEventPublisher()
+
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWorkFromRepository(repo)
+			uow := NewFakeUnitOfWork(repo, ep)
 			svc := NewService(uow)
 
 			sku := "SMALL-TABLE"
@@ -119,8 +134,10 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
+			ep := publisher.NewEventPublisher()
+
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWorkFromRepository(repo)
+			uow := NewFakeUnitOfWork(repo, ep)
 			svc := NewService(uow)
 
 			var orderID domain.OrderID = "order-001"
@@ -166,8 +183,10 @@ func TestService(t *testing.T) {
 				},
 			}
 
+			ep := publisher.NewEventPublisher()
+
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWorkFromRepository(repo)
+			uow := NewFakeUnitOfWork(repo, ep)
 			svc := NewService(uow)
 
 			err := svc.AddProduct(ctx, product)
@@ -182,8 +201,10 @@ func TestService(t *testing.T) {
 
 	t.Run("reallocate allocated orderline",
 		func(t *testing.T) {
+			ep := publisher.NewEventPublisher()
+
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWorkFromRepository(repo)
+			uow := NewFakeUnitOfWork(repo, ep)
 			svc := NewService(uow)
 
 			ctx := context.Background()
@@ -218,6 +239,38 @@ func TestService(t *testing.T) {
 			assert.Equal(t, otherBatch.Reference, updatedBatchRef)
 			assert.Equal(t, existingBatch.AvailableQuantity(), existingBatch.PurchasedQuantity)
 		})
+
+	t.Run("out of stock creates an event for external services",
+		func(t *testing.T) {
+			eventHandler := &MockEventHandler{}
+			ep := publisher.NewEventPublisher()
+
+			repo := NewFakeRepository()
+			uow := NewFakeUnitOfWork(repo, ep)
+			svc := NewService(uow)
+
+			ctx := context.Background()
+
+			sku := "SMALL-TABLE"
+			batch := domain.NewBatch("batch-001", sku, 10, nil)
+			product := domain.NewProduct(sku, []*domain.Batch{batch}, 0)
+
+			event := &domain.OutOfStockEvent{
+				SKU: "SMALL-TABLE",
+			}
+			ep.RegisterHandler(event, eventHandler)
+
+			err := svc.AddProduct(ctx, product)
+			assert.NoError(t, err)
+
+			_, err = svc.Allocate(ctx, &domain.OrderLine{
+				SKU:      sku,
+				Quantity: 15,
+			})
+			assert.ErrorIs(t, err, domain.ErrOutOfStock)
+			assert.Equal(t, 1, len(eventHandler.ReceivedEvents))
+			assert.Equal(t, eventHandler.ReceivedEvents[0], event)
+		})
 }
 
 type FakeRepository struct {
@@ -241,7 +294,7 @@ func (r *FakeRepository) GetProduct(_ context.Context, sku string) (*domain.Prod
 			return r.products[p.SKU], nil
 		}
 	}
-	return nil, repository.ErrProductNotFound
+	return nil, domain.ErrProductNotFound
 }
 
 func (r *FakeRepository) UpdateProduct(
@@ -249,5 +302,44 @@ func (r *FakeRepository) UpdateProduct(
 	p *domain.Product,
 ) error {
 	r.products[p.SKU] = p
+	return nil
+}
+
+type FakeUoW struct {
+	adapters unitofwork.Adapters
+	events   []domain.Event
+	ep       unitofwork.EventPublisher
+}
+
+func NewFakeUnitOfWork(repo unitofwork.Repository, ep unitofwork.EventPublisher) *FakeUoW {
+	return &FakeUoW{
+		adapters: unitofwork.Adapters{Repository: repo},
+		ep:       ep,
+	}
+}
+
+func (u *FakeUoW) Transact(ctx context.Context, txFunc func(_ unitofwork.Adapters) error) error {
+	err := txFunc(u.adapters)
+	u.dispatchEvents()
+	return err
+}
+
+func (u *FakeUoW) AddEvent(event domain.Event) {
+	u.events = append(u.events, event)
+}
+
+func (u *FakeUoW) dispatchEvents() {
+	for _, event := range u.events {
+		u.ep.Publish(event)
+	}
+	u.events = nil
+}
+
+type MockEventHandler struct {
+	ReceivedEvents []domain.Event
+}
+
+func (m *MockEventHandler) Handle(event domain.Event) error {
+	m.ReceivedEvents = append(m.ReceivedEvents, event)
 	return nil
 }
