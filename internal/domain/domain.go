@@ -97,7 +97,7 @@ func (p *Product) ChangeBatchQuantity(batchReference string, ChangedToQuantity i
 	for batch.AvailableQuantity() < 0 {
 		line := batch.DeallocateOneRandomly()
 
-		p.events = append(p.events, &AllocationRequired{
+		p.events = append(p.events, &BatchQuantityChangedRealocationIsNeeded{
 			OrderID:  string(line.OrderId),
 			SKU:      line.SKU,
 			Quantity: line.Quantity,

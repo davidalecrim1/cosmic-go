@@ -12,7 +12,7 @@ import (
 
 	"cosmic-go/internal/domain"
 	"cosmic-go/internal/infra/database"
-	eventpublisher "cosmic-go/internal/infra/event_publisher"
+	messagepublisher "cosmic-go/internal/infra/event_publisher"
 
 	"cosmic-go/internal/infra/repository"
 	unitofwork "cosmic-go/internal/uow"
@@ -24,12 +24,12 @@ import (
 
 var (
 	db *gorm.DB
-	ep *eventpublisher.EventPublisher
+	ep *messagepublisher.MessagePublisher
 )
 
 func TestMain(m *testing.M) {
 	db = database.InitializeDatabase()
-	ep = eventpublisher.NewEventPublisher()
+	ep = messagepublisher.NewMessagePublisher()
 
 	code := m.Run()
 	os.Exit(code)

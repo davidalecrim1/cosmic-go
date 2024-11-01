@@ -24,20 +24,25 @@ type Adapters struct {
 type AllocationUoW struct {
 	db     *gorm.DB
 	events []domain.Event
-	ep     EventPublisher
+	mp     MessagePublisher
 }
 
-type EventPublisher interface {
-	Publish(event domain.Event) <-chan error
-	RegisterHandler(event domain.Event, handler EventHandler)
+type MessagePublisher interface {
+	PublishEvent(event domain.Event) <-chan error
+	PublishCommand(command domain.Command) <-chan error
+	RegisterEventHandler(event domain.Event, handler EventHandler)
+	RegisterCommandHandler(command domain.Command, handler CommandHandler)
 }
 
-type EventHandler func(event domain.Event) error
+type (
+	EventHandler   func(event domain.Event) error
+	CommandHandler func(command domain.Command) error
+)
 
-func NewAllocationUnitOfWork(db *gorm.DB, ep EventPublisher) *AllocationUoW {
+func NewAllocationUnitOfWork(db *gorm.DB, mp MessagePublisher) *AllocationUoW {
 	return &AllocationUoW{
 		db: db,
-		ep: ep,
+		mp: mp,
 	}
 }
 
@@ -71,7 +76,7 @@ func (u *AllocationUoW) dispatchEvents() {
 	}
 
 	for _, event := range events {
-		errChan := u.ep.Publish(event)
+		errChan := u.mp.PublishEvent(event)
 		handleErr(errChan)
 	}
 }

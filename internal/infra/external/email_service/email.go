@@ -9,6 +9,6 @@ import (
 type EmailService struct{}
 
 func (e *EmailService) SendEmail(event domain.Event) error {
-	log.Printf("simulating an e-mail being sent for event: %v", event.EventName())
+	log.Printf("simulating an e-mail being sent for event: %v", event.GetEventName())
 	return nil
 }

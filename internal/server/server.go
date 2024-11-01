@@ -7,7 +7,7 @@ import (
 	"cosmic-go/internal/domain"
 	"cosmic-go/internal/handler"
 
-	eventpublisher "cosmic-go/internal/infra/event_publisher"
+	messagepublisher "cosmic-go/internal/infra/event_publisher"
 	emailservice "cosmic-go/internal/infra/external/email_service"
 	unitofwork "cosmic-go/internal/uow"
 
@@ -15,16 +15,17 @@ import (
 )
 
 func InitializeServer(db *gorm.DB) *http.ServeMux {
-	ep := eventpublisher.NewEventPublisher()
-	uow := unitofwork.NewAllocationUnitOfWork(db, ep)
+	mp := messagepublisher.NewMessagePublisher()
+	uow := unitofwork.NewAllocationUnitOfWork(db, mp)
 	svc := application.NewAllocationService(uow)
-	handler := handler.NewAllocationHandler(ep)
+	handler := handler.NewAllocationHandler(mp)
 
 	em := emailservice.EmailService{}
-	ep.RegisterHandler(&domain.OutOfStock{}, em.SendEmail)
-	ep.RegisterHandler(&domain.CreateProduct{}, svc.AddProduct)
-	ep.RegisterHandler(&domain.AllocationRequired{}, svc.Allocate)
-	ep.RegisterHandler(&domain.DeallocationRequired{}, svc.Deallocate)
+	mp.RegisterEventHandler(&domain.OutOfStock{}, em.SendEmail)
+
+	mp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
+	mp.RegisterCommandHandler(&domain.Allocate{}, svc.Allocate)
+	mp.RegisterCommandHandler(&domain.Deallocate{}, svc.Deallocate)
 
 	router := InitializeRouter(handler)
 	return router

@@ -9,7 +9,7 @@ import (
 
 	"cosmic-go/internal/application"
 	"cosmic-go/internal/domain"
-	eventpublisher "cosmic-go/internal/infra/event_publisher"
+	messagepublisher "cosmic-go/internal/infra/event_publisher"
 	utils "cosmic-go/pkg/utils"
 
 	"github.com/go-playground/validator/v10"
@@ -18,12 +18,12 @@ import (
 var defaultRequestTimeout = time.Second * 30
 
 type AllocationHandler struct {
-	eventPublisher *eventpublisher.EventPublisher
+	messagePublisher *messagepublisher.MessagePublisher
 }
 
-func NewAllocationHandler(e *eventpublisher.EventPublisher) *AllocationHandler {
+func NewAllocationHandler(e *messagepublisher.MessagePublisher) *AllocationHandler {
 	return &AllocationHandler{
-		eventPublisher: e,
+		messagePublisher: e,
 	}
 }
 
@@ -46,13 +46,13 @@ func (h *AllocationHandler) Allocate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	event := &domain.AllocationRequired{
+	command := &domain.Allocate{
 		OrderID:  reqBody.OrderID,
 		SKU:      reqBody.SKU,
 		Quantity: reqBody.Quantity,
 	}
 
-	errChan := h.eventPublisher.Publish(event)
+	errChan := h.messagePublisher.PublishCommand(command)
 	batchref := ""
 
 	if err := utils.ErrChanWithAny(
@@ -108,12 +108,12 @@ func (h *AllocationHandler) Deallocate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	event := &domain.DeallocationRequired{
+	command := &domain.Deallocate{
 		OrderID: reqBody.OrderID,
 		SKU:     reqBody.SKU,
 	}
 
-	errChan := h.eventPublisher.Publish(event)
+	errChan := h.messagePublisher.PublishCommand(command)
 	if err := utils.ErrChanWithAny(
 		errChan,
 		application.ErrProductNotFound,
@@ -171,12 +171,12 @@ func (h *AllocationHandler) AddProduct(w http.ResponseWriter, r *http.Request) {
 		batches = append(batches, batch)
 	}
 
-	event := &domain.CreateProduct{
+	command := &domain.CreateProduct{
 		SKU:     reqBody.SKU,
 		Batches: batches,
 	}
 
-	errChan := h.eventPublisher.Publish(event)
+	errChan := h.messagePublisher.PublishCommand(command)
 	if utils.ErrChanIsNotEmpty(errChan) {
 		w.WriteHeader(http.StatusInternalServerError)
 

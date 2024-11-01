@@ -2,13 +2,12 @@ package application
 
 import (
 	"context"
-	"log"
 	"os"
 	"testing"
 	"time"
 
 	"cosmic-go/internal/domain"
-	eventpublisher "cosmic-go/internal/infra/event_publisher"
+	messagepublisher "cosmic-go/internal/infra/event_publisher"
 	unitofwork "cosmic-go/internal/uow"
 	utils "cosmic-go/pkg/utils"
 
@@ -23,24 +22,24 @@ func TestMain(m *testing.M) {
 func TestService(t *testing.T) {
 	t.Run("allocate batch",
 		func(t *testing.T) {
-			ep := eventpublisher.NewEventPublisher()
+			mp := messagepublisher.NewMessagePublisher()
 
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWork(repo, ep)
+			uow := NewFakeUnitOfWork(repo, mp)
 			svc := NewAllocationService(uow)
 
-			ep.RegisterHandler(&domain.CreateProduct{}, svc.AddProduct)
+			mp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
 
 			eta := time.Now()
-			event := &domain.CreateProduct{
+			command := &domain.CreateProduct{
 				SKU: "SMALL-TABLE",
 				Batches: []*domain.Batch{
 					domain.NewBatch("batch-001", "SMALL-TABLE", 100, &eta),
 				},
 			}
 
-			errChan := ep.Publish(event)
-			utils.ErrChanIsEmpty(errChan)
+			errChan := mp.PublishCommand(command)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
 			ctx := context.Background()
 			product, err := repo.GetProduct(ctx, "SMALL-TABLE")
@@ -51,14 +50,14 @@ func TestService(t *testing.T) {
 
 	t.Run("error for invalid sku on allocate",
 		func(t *testing.T) {
-			ep := eventpublisher.NewEventPublisher()
+			mp := messagepublisher.NewMessagePublisher()
 
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWork(repo, ep)
+			uow := NewFakeUnitOfWork(repo, mp)
 			svc := NewAllocationService(uow)
 
-			ep.RegisterHandler(&domain.CreateProduct{}, svc.AddProduct)
-			ep.RegisterHandler(&domain.AllocationRequired{}, svc.Allocate)
+			mp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
+			mp.RegisterCommandHandler(&domain.Allocate{}, svc.Allocate)
 
 			createProductEvent := &domain.CreateProduct{
 				SKU: "SMALL-TABLE",
@@ -67,28 +66,28 @@ func TestService(t *testing.T) {
 				},
 			}
 
-			errChan := ep.Publish(createProductEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan := mp.PublishCommand(createProductEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
-			allocationEvent := &domain.AllocationRequired{
+			allocationEvent := &domain.Allocate{
 				OrderID:  "order-001",
 				SKU:      "LARGE-TABLE",
 				Quantity: 10,
 			}
 
-			errChan = ep.Publish(allocationEvent)
-			assertErrorWithin(t, errChan, ErrProductNotFound)
+			errChan = mp.PublishCommand(allocationEvent)
+			utils.ErrChanWithAny(errChan, ErrProductNotFound)
 		})
 
 	t.Run("add product",
 		func(t *testing.T) {
-			ep := eventpublisher.NewEventPublisher()
+			mp := messagepublisher.NewMessagePublisher()
 
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWork(repo, ep)
+			uow := NewFakeUnitOfWork(repo, mp)
 			svc := NewAllocationService(uow)
 
-			ep.RegisterHandler(&domain.CreateProduct{}, svc.AddProduct)
+			mp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
 
 			sku := "SMALL-TABLE"
 			createProductEvent := &domain.CreateProduct{
@@ -98,8 +97,8 @@ func TestService(t *testing.T) {
 				},
 			}
 
-			errChan := ep.Publish(createProductEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan := mp.PublishCommand(createProductEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
 			ctx := context.Background()
 			persistedProduct, err := repo.GetProduct(ctx, sku)
@@ -113,15 +112,15 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			ep := eventpublisher.NewEventPublisher()
+			mp := messagepublisher.NewMessagePublisher()
 
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWork(repo, ep)
+			uow := NewFakeUnitOfWork(repo, mp)
 			svc := NewAllocationService(uow)
 
-			ep.RegisterHandler(&domain.CreateProduct{}, svc.AddProduct)
-			ep.RegisterHandler(&domain.AllocationRequired{}, svc.Allocate)
-			ep.RegisterHandler(&domain.DeallocationRequired{}, svc.Deallocate)
+			mp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
+			mp.RegisterCommandHandler(&domain.Allocate{}, svc.Allocate)
+			mp.RegisterCommandHandler(&domain.Deallocate{}, svc.Deallocate)
 
 			sku := "SMALL-TABLE"
 			orderID := "order-001"
@@ -132,26 +131,26 @@ func TestService(t *testing.T) {
 				},
 			}
 
-			errChan := ep.Publish(createProductEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan := mp.PublishCommand(createProductEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
-			allocateEvent := &domain.AllocationRequired{
+			allocateEvent := &domain.Allocate{
 				OrderID:  orderID,
 				SKU:      sku,
 				Quantity: 10,
 			}
 
-			errChan = ep.Publish(allocateEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan = mp.PublishCommand(allocateEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
 			invalidProductSKU := "INVALID_SKU"
-			deallocateEvent := &domain.DeallocationRequired{
+			deallocateEvent := &domain.Deallocate{
 				OrderID: orderID,
 				SKU:     invalidProductSKU,
 			}
 
-			errChan = ep.Publish(deallocateEvent)
-			assertErrorWithin(t, errChan, ErrProductNotFound)
+			errChan = mp.PublishCommand(deallocateEvent)
+			utils.ErrChanWithAny(errChan, ErrProductNotFound)
 
 			product, err := repo.GetProduct(ctx, sku)
 			assert.NoError(t, err)
@@ -164,15 +163,15 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			ep := eventpublisher.NewEventPublisher()
+			mp := messagepublisher.NewMessagePublisher()
 
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWork(repo, ep)
+			uow := NewFakeUnitOfWork(repo, mp)
 			svc := NewAllocationService(uow)
 
-			ep.RegisterHandler(&domain.CreateProduct{}, svc.AddProduct)
-			ep.RegisterHandler(&domain.AllocationRequired{}, svc.Allocate)
-			ep.RegisterHandler(&domain.DeallocationRequired{}, svc.Deallocate)
+			mp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
+			mp.RegisterCommandHandler(&domain.Allocate{}, svc.Allocate)
+			mp.RegisterCommandHandler(&domain.Deallocate{}, svc.Deallocate)
 
 			sku := "SMALL-TABLE"
 			orderID := "order-001"
@@ -183,26 +182,26 @@ func TestService(t *testing.T) {
 				},
 			}
 
-			errChan := ep.Publish(createProductEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan := mp.PublishCommand(createProductEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
-			allocateEvent := &domain.AllocationRequired{
+			allocateEvent := &domain.Allocate{
 				OrderID:  orderID,
 				SKU:      sku,
 				Quantity: 10,
 			}
 
-			errChan = ep.Publish(allocateEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan = mp.PublishCommand(allocateEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
 			var invalidOrderId domain.OrderID = "INVALID_ORDERID"
-			deallocateEvent := &domain.DeallocationRequired{
+			deallocateEvent := &domain.Deallocate{
 				OrderID: string(invalidOrderId),
 				SKU:     sku,
 			}
 
-			errChan = ep.Publish(deallocateEvent)
-			assertErrorWithin(t, errChan, ErrInvalidOrderID)
+			errChan = mp.PublishCommand(deallocateEvent)
+			utils.ErrChanWithAny(errChan, ErrInvalidOrderID)
 
 			product, err := repo.GetProduct(ctx, sku)
 			assert.NoError(t, err)
@@ -215,15 +214,15 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			ep := eventpublisher.NewEventPublisher()
+			mp := messagepublisher.NewMessagePublisher()
 
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWork(repo, ep)
+			uow := NewFakeUnitOfWork(repo, mp)
 			svc := NewAllocationService(uow)
 
-			ep.RegisterHandler(&domain.CreateProduct{}, svc.AddProduct)
-			ep.RegisterHandler(&domain.AllocationRequired{}, svc.Allocate)
-			ep.RegisterHandler(&domain.DeallocationRequired{}, svc.Deallocate)
+			mp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
+			mp.RegisterCommandHandler(&domain.Allocate{}, svc.Allocate)
+			mp.RegisterCommandHandler(&domain.Deallocate{}, svc.Deallocate)
 
 			sku := "SMALL-TABLE"
 			orderID := "order-001"
@@ -234,30 +233,30 @@ func TestService(t *testing.T) {
 				},
 			}
 
-			errChan := ep.Publish(createProductEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan := mp.PublishCommand(createProductEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
-			allocateEvent := &domain.AllocationRequired{
+			allocateEvent := &domain.Allocate{
 				OrderID:  orderID,
 				SKU:      sku,
 				Quantity: 10,
 			}
 
-			errChan = ep.Publish(allocateEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan = mp.PublishCommand(allocateEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
 			product, err := repo.GetProduct(ctx, sku)
 			assert.NoError(t, err)
 			_, ok := product.Batches[0].Allocations[domain.OrderID(orderID)]
 			assert.True(t, ok)
 
-			deallocateEvent := &domain.DeallocationRequired{
+			deallocateEvent := &domain.Deallocate{
 				OrderID: allocateEvent.OrderID,
 				SKU:     sku,
 			}
 
-			errChan = ep.Publish(deallocateEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan = mp.PublishCommand(deallocateEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
 			product, err = repo.GetProduct(ctx, sku)
 			assert.NoError(t, err)
@@ -267,14 +266,14 @@ func TestService(t *testing.T) {
 
 	t.Run("reallocate allocated orderline",
 		func(t *testing.T) {
-			ep := eventpublisher.NewEventPublisher()
+			mp := messagepublisher.NewMessagePublisher()
 
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWork(repo, ep)
+			uow := NewFakeUnitOfWork(repo, mp)
 			svc := NewAllocationService(uow)
 
-			ep.RegisterHandler(&domain.CreateProduct{}, svc.AddProduct)
-			ep.RegisterHandler(&domain.ReallocationRequired{}, svc.Reallocate)
+			mp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
+			mp.RegisterCommandHandler(&domain.Reallocate{}, svc.Reallocate)
 
 			sku := "SMALL-TABLE"
 			otherBatch := domain.NewBatch("batch-999", sku, 100, nil)
@@ -297,17 +296,17 @@ func TestService(t *testing.T) {
 				},
 			}
 
-			errChan := ep.Publish(createProduct)
-			utils.ErrChanIsEmpty(errChan)
+			errChan := mp.PublishCommand(createProduct)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
-			reallocateEvent := &domain.ReallocationRequired{
+			reallocateEvent := &domain.Reallocate{
 				OrderID:  string(order.OrderId),
 				SKU:      order.SKU,
 				Quantity: order.Quantity,
 			}
 
-			errChan = ep.Publish(reallocateEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan = mp.PublishCommand(reallocateEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
 			assert.Equal(
 				t,
@@ -317,67 +316,69 @@ func TestService(t *testing.T) {
 			)
 		})
 
-	t.Run("out of stock creates an event for external services",
+	t.Run("out of stock creates an command for external services",
 		func(t *testing.T) {
 			eventHandler := &MockEventHandler{}
-			ep := eventpublisher.NewEventPublisher()
+			mp := messagepublisher.NewMessagePublisher()
 
 			repo := NewFakeRepository()
-			uow := NewFakeUnitOfWork(repo, ep)
+			uow := NewFakeUnitOfWork(repo, mp)
 			svc := NewAllocationService(uow)
 
-			ep.RegisterHandler(&domain.CreateProduct{}, svc.AddProduct)
-			ep.RegisterHandler(&domain.AllocationRequired{}, svc.Allocate)
-			ep.RegisterHandler(&domain.OutOfStock{}, eventHandler.Handle)
+			mp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
+			mp.RegisterCommandHandler(&domain.Allocate{}, svc.Allocate)
+			mp.RegisterEventHandler(&domain.OutOfStock{}, eventHandler.Handle)
 
 			sku := "SMALL-TABLE"
 			batch := domain.NewBatch("batch-001", sku, 10, nil)
 
-			errChan := ep.Publish(&domain.CreateProduct{
+			errChan := mp.PublishCommand(&domain.CreateProduct{
 				SKU:     sku,
 				Batches: []*domain.Batch{batch},
 			})
-			utils.ErrChanIsEmpty(errChan)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
-			errChan = ep.Publish(&domain.AllocationRequired{
+			errChan = mp.PublishCommand(&domain.Allocate{
 				OrderID:  "order-001",
 				SKU:      sku,
 				Quantity: 15,
 			})
-			assertErrorWithin(t, errChan, domain.ErrOutOfStock)
+
+			err := utils.ErrChanWithAny(errChan, domain.ErrOutOfStock)
+			assert.NotNil(t, err)
 
 			assert.Equal(t, 1, len(eventHandler.ReceivedEvents))
 		})
 
-	t.Run("event BatchQuantityChanged changes available quantity of a batch",
+	t.Run("command ChangeBatchQuantity changes available quantity of a batch",
 		func(t *testing.T) {
 			repo := NewFakeRepository()
-			ep := eventpublisher.NewEventPublisher()
-			uow := NewFakeUnitOfWork(repo, ep)
+			mp := messagepublisher.NewMessagePublisher()
+			uow := NewFakeUnitOfWork(repo, mp)
 			svc := NewAllocationService(uow)
 
-			ep.RegisterHandler(&domain.CreateProduct{}, svc.AddProduct)
-			ep.RegisterHandler(&domain.BatchQuantityChanged{}, svc.ChangeBatchQuantity)
+			mp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
+			mp.RegisterCommandHandler(&domain.ChangeBatchQuantity{}, svc.ChangeBatchQuantity)
 
 			eta := time.Now()
 
-			event := &domain.CreateProduct{
+			command := &domain.CreateProduct{
 				SKU: "SMALL-TABLE",
 				Batches: []*domain.Batch{
 					domain.NewBatch("batch-001", "SMALL-TABLE", 100, &eta),
 				},
 			}
 
-			errChan := ep.Publish(event)
-			utils.ErrChanIsEmpty(errChan)
+			errChan := mp.PublishCommand(command)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
-			batchEvent := &domain.BatchQuantityChanged{
+			batchEvent := &domain.ChangeBatchQuantity{
 				BatchReference:    "batch-001",
 				ChangedToQuantity: 10,
 			}
 
-			errChan = ep.Publish(batchEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan = mp.PublishCommand(batchEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
 			ctx := context.Background()
 			product, err := repo.GetProduct(ctx, "SMALL-TABLE")
@@ -393,46 +394,47 @@ func TestService(t *testing.T) {
 			assert.Equal(t, true, foundBatch)
 		})
 
-	t.Run("event changes available quantity of a batch with reallocation when needed",
+	t.Run("command changes available quantity of a batch with reallocation when needed",
 		func(t *testing.T) {
 			ctx := context.Background()
 
 			repo := NewFakeRepository()
-			ep := eventpublisher.NewEventPublisher()
-			uow := NewFakeUnitOfWork(repo, ep)
+			mp := messagepublisher.NewMessagePublisher()
+			uow := NewFakeUnitOfWork(repo, mp)
 			svc := NewAllocationService(uow)
 
-			ep.RegisterHandler(&domain.CreateProduct{}, svc.AddProduct)
-			ep.RegisterHandler(&domain.AllocationRequired{}, svc.Allocate)
-			ep.RegisterHandler(&domain.BatchQuantityChanged{}, svc.ChangeBatchQuantity)
+			mp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
+			mp.RegisterCommandHandler(&domain.Allocate{}, svc.Allocate)
+			mp.RegisterCommandHandler(&domain.ChangeBatchQuantity{}, svc.ChangeBatchQuantity)
+			mp.RegisterEventHandler(&domain.BatchQuantityChangedRealocationIsNeeded{}, svc.AllocationIsNeeded)
 
 			eta := time.Now()
 
-			productEvent := &domain.CreateProduct{
+			productCommand := &domain.CreateProduct{
 				SKU: "SMALL-TABLE",
 				Batches: []*domain.Batch{
 					domain.NewBatch("batch-001", "SMALL-TABLE", 100, nil),
 					domain.NewBatch("batch-002", "SMALL-TABLE", 50, &eta),
 				},
 			}
-			errChan := ep.Publish(productEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan := mp.PublishCommand(productCommand)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
-			allocationEvent := &domain.AllocationRequired{
+			allocationEvent := &domain.Allocate{
 				OrderID:  "order-001",
 				SKU:      "SMALL-TABLE",
 				Quantity: 20,
 			}
-			errChan = ep.Publish(allocationEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan = mp.PublishCommand(allocationEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
-			allocationEvent = &domain.AllocationRequired{
+			allocationEvent = &domain.Allocate{
 				OrderID:  "order-002",
 				SKU:      "SMALL-TABLE",
 				Quantity: 20,
 			}
-			errChan = ep.Publish(allocationEvent)
-			utils.ErrChanIsEmpty(errChan)
+			errChan = mp.PublishCommand(allocationEvent)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
 			product, err := repo.GetProduct(ctx, "SMALL-TABLE")
 			assert.NoError(t, err)
@@ -453,13 +455,13 @@ func TestService(t *testing.T) {
 			assert.True(t, foundBatchOne)
 			assert.True(t, foundBatchTwo)
 
-			event := &domain.BatchQuantityChanged{
+			command := &domain.ChangeBatchQuantity{
 				BatchReference:    "batch-001",
 				ChangedToQuantity: 30,
 			}
 
-			errChan = ep.Publish(event)
-			utils.ErrChanIsEmpty(errChan)
+			errChan = mp.PublishCommand(command)
+			assert.True(t, utils.ErrChanIsEmpty(errChan))
 
 			product, err = repo.GetProduct(ctx, "SMALL-TABLE")
 			assert.NoError(t, err)
@@ -479,19 +481,6 @@ func TestService(t *testing.T) {
 			assert.True(t, foundBatchOne)
 			assert.True(t, foundBatchTwo)
 		})
-}
-
-func assertNoErrorWithin(t *testing.T, errChan <-chan error) {
-	for err := range errChan {
-		assert.NoError(t, err, "error is not expected here")
-	}
-}
-
-func assertErrorWithin(t *testing.T, errChan <-chan error, expectedErr error) {
-	for err := range errChan {
-		assert.ErrorIs(t, err, expectedErr)
-		break
-	}
 }
 
 type FakeRepository struct {
@@ -541,13 +530,13 @@ func (r *FakeRepository) GetProductByBatchReference(_ context.Context, batchRefe
 type FakeUoW struct {
 	adapters unitofwork.Adapters
 	events   []domain.Event
-	ep       unitofwork.EventPublisher
+	mp       unitofwork.MessagePublisher
 }
 
-func NewFakeUnitOfWork(repo unitofwork.Repository, ep unitofwork.EventPublisher) *FakeUoW {
+func NewFakeUnitOfWork(repo unitofwork.Repository, mp unitofwork.MessagePublisher) *FakeUoW {
 	return &FakeUoW{
 		adapters: unitofwork.Adapters{Repository: repo},
-		ep:       ep,
+		mp:       mp,
 	}
 }
 
@@ -565,17 +554,9 @@ func (u *FakeUoW) dispatchEvents() {
 	events := u.events
 	u.events = nil
 
-	handleErr := func(errChan <-chan error) {
-		for err := range errChan {
-			if err != nil {
-				log.Printf("error publishing event: %v", err)
-			}
-		}
-	}
-
 	for _, event := range events {
-		errChan := u.ep.Publish(event)
-		handleErr(errChan)
+		errChan := u.mp.PublishEvent(event)
+		utils.LogErrChan(errChan)
 	}
 }
 

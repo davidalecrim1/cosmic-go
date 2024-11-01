@@ -27,8 +27,8 @@ func NewAllocationService(uow UoW) *AllocationService {
 	return &AllocationService{uow: uow}
 }
 
-func (s *AllocationService) Allocate(e domain.Event) error {
-	line, err := s.mapEventToOrderLine(e)
+func (s *AllocationService) Allocate(c domain.Command) error {
+	line, err := s.mapCommandToOrderLine(c)
 	if err != nil {
 		return err
 	}
@@ -40,21 +40,21 @@ func (s *AllocationService) Allocate(e domain.Event) error {
 	})
 }
 
-func (s *AllocationService) mapEventToOrderLine(e domain.Event) (*domain.OrderLine, error) {
-	switch event := e.(type) {
-	case *domain.AllocationRequired:
+func (s *AllocationService) mapCommandToOrderLine(c domain.Command) (*domain.OrderLine, error) {
+	switch event := c.(type) {
+	case *domain.Allocate:
 		return &domain.OrderLine{
 			OrderId:  domain.OrderID(event.OrderID),
 			SKU:      event.SKU,
 			Quantity: event.Quantity,
 		}, nil
-	case *domain.ReallocationRequired:
+	case *domain.Reallocate:
 		return &domain.OrderLine{
 			OrderId:  domain.OrderID(event.OrderID),
 			SKU:      event.SKU,
 			Quantity: event.Quantity,
 		}, nil
-	case *domain.DeallocationRequired:
+	case *domain.Deallocate:
 		return &domain.OrderLine{
 			OrderId: domain.OrderID(event.OrderID),
 			SKU:     event.SKU,
@@ -91,9 +91,9 @@ func (s *AllocationService) processAllocation(ctx context.Context, line *domain.
 	return updatedBatchRef, nil
 }
 
-func (s *AllocationService) AddProduct(e domain.Event) error {
+func (s *AllocationService) AddProduct(c domain.Command) error {
 	ctx := context.Background()
-	p, err := s.mapEventToProduct(e)
+	p, err := s.mapEventToProduct(c)
 	if err != nil {
 		return err
 	}
@@ -103,8 +103,8 @@ func (s *AllocationService) AddProduct(e domain.Event) error {
 	})
 }
 
-func (s *AllocationService) mapEventToProduct(e domain.Event) (*domain.Product, error) {
-	switch event := e.(type) {
+func (s *AllocationService) mapEventToProduct(c domain.Command) (*domain.Product, error) {
+	switch event := c.(type) {
 	case *domain.CreateProduct:
 		return domain.NewProduct(event.SKU, event.Batches, 0), nil
 	default:
@@ -112,8 +112,8 @@ func (s *AllocationService) mapEventToProduct(e domain.Event) (*domain.Product, 
 	}
 }
 
-func (s *AllocationService) Deallocate(e domain.Event) error {
-	line, err := s.mapEventToOrderLine(e)
+func (s *AllocationService) Deallocate(c domain.Command) error {
+	line, err := s.mapCommandToOrderLine(c)
 	if err != nil {
 		return err
 	}
@@ -141,14 +141,18 @@ func (s *AllocationService) processDeallocation(ctx context.Context, orderid dom
 	return adapters.Repository.UpdateProduct(ctx, p)
 }
 
-func (s *AllocationService) Reallocate(e domain.Event) error {
-	line, err := s.mapEventToOrderLine(e)
+func (s *AllocationService) Reallocate(c domain.Command) error {
+	line, err := s.mapCommandToOrderLine(c)
 	if err != nil {
 		return err
 	}
 
+	return s.processRealocation(line)
+}
+
+func (s *AllocationService) processRealocation(line *domain.OrderLine) error {
 	ctx := context.Background()
-	err = s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
+	return s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
 		p, err := adapters.Repository.GetProduct(ctx, line.SKU)
 		if err != nil {
 			return err
@@ -162,11 +166,10 @@ func (s *AllocationService) Reallocate(e domain.Event) error {
 		_, err = s.processAllocation(ctx, line, adapters)
 		return err
 	})
-	return err
 }
 
-func (s *AllocationService) ChangeBatchQuantity(e domain.Event) error {
-	event, err := s.mapEventToBatchReference(e)
+func (s *AllocationService) ChangeBatchQuantity(c domain.Command) error {
+	event, err := s.mapEventToBatchReference(c)
 	if err != nil {
 		return err
 	}
@@ -194,10 +197,36 @@ func (s *AllocationService) ChangeBatchQuantity(e domain.Event) error {
 	return err
 }
 
-func (s *AllocationService) mapEventToBatchReference(e domain.Event) (*domain.BatchQuantityChanged, error) {
-	switch event := e.(type) {
-	case *domain.BatchQuantityChanged:
+func (s *AllocationService) mapEventToBatchReference(c domain.Command) (*domain.ChangeBatchQuantity, error) {
+	switch event := c.(type) {
+	case *domain.ChangeBatchQuantity:
 		return event, nil
+	default:
+		return nil, ErrInvalidEventType
+	}
+}
+
+func (s *AllocationService) AllocationIsNeeded(event domain.Event) error {
+	line, err := s.mapEventToOrderLine(event)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	return s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
+		_, err := s.processAllocation(ctx, line, adapters)
+		return err
+	})
+}
+
+func (s *AllocationService) mapEventToOrderLine(event domain.Event) (*domain.OrderLine, error) {
+	switch event := event.(type) {
+	case *domain.BatchQuantityChangedRealocationIsNeeded:
+		return &domain.OrderLine{
+			OrderId:  domain.OrderID(event.OrderID),
+			SKU:      event.SKU,
+			Quantity: event.Quantity,
+		}, nil
 	default:
 		return nil, ErrInvalidEventType
 	}
