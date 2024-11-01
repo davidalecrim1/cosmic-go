@@ -454,3 +454,36 @@ Our ongoing objective with these architectural patterns is to try to have the co
 ```
 
 This offers some reflection. In order to avoid complexity, we may create more complexity that we might not know if it is needed. Think about this when choosing an architecture. The goal is always to focus on simplicity, and when the requirements (i.e. the business goal) are complex, we design a architecture that can hold that complexity without technical debt.
+
+## Chapter 10: Commands and Command Handler
+
+```
+Like events, commands are a type of message—​instructions sent by one part of a system to another. We usually represent commands with dumb data structures and can handle them in much the same way as events.
+
+Commands are sent by one actor to another specific actor with the expectation that a particular thing will happen as a result. When we post a form to an API handler, we are sending a command. We name commands with imperative mood verb phrases like "allocate stock" or "delay shipment."
+
+Commands capture intent. They express our wish for the system to do something. As a result, when they fail, the sender needs to receive error information.
+
+Events are broadcast by an actor to all interested listeners. When we publish BatchQuantityChanged, we don’t know who’s going to pick it up. We name events with past-tense verb phrases like "order allocated to stock" or "shipment delayed."
+
+We often use events to spread the knowledge about successful commands.
+
+Events capture facts about things that happened in the past. Since we don’t know who’s handling an event, senders should not care whether the receivers succeeded or failed. Events versus commands recaps the differences.
+```
+
+Events = Past
+Command = Imperative, Do This Now!
+
+```
+Events go to a dispatcher that can delegate to multiple handlers per event.
+It catches and logs errors but doesn’t let them interrupt message processing.
+```
+
+```
+The command dispatcher expects just one handler per command.
+If any errors are raised, they fail fast and will bubble up.
+```
+
+```
+Retrying operations that might fail is probably the single best way to improve the resilience of our software. Again, the Unit of Work and Command Handler patterns mean that each attempt starts from a consistent state and won’t leave things half-finished.
+```
