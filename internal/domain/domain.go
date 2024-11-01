@@ -12,12 +12,14 @@ var (
 	ErrCannotDeallocateUnallocatedOrderLine = errors.New("cannot deallocate unallocated order line")
 	ErrOutOfStock                           = errors.New("out of stock")
 	ErrProductNotFound                      = errors.New("product not found")
+	ErrBatchNotFound                        = errors.New("batch not found")
 )
 
 type Product struct {
 	SKU       string
 	Batches   []*Batch
 	VersionId int
+	events    []Event
 }
 
 func NewProduct(sku string, batches []*Batch, versionId int) *Product {
@@ -58,6 +60,7 @@ func (p *Product) Allocate(ol *OrderLine) (reference string, err error) {
 		return batch.Reference, nil
 	}
 
+	p.events = append(p.events, &OutOfStock{SKU: ol.SKU})
 	return "", ErrOutOfStock
 }
 
@@ -71,6 +74,42 @@ func (p *Product) Deallocate(orderid OrderID) error {
 	}
 
 	return ErrCannotDeallocateUnallocatedOrderLine
+}
+
+func (p *Product) GetBatchByReference(batchReference string) (*Batch, error) {
+	for _, b := range p.Batches {
+		if b.Reference == batchReference {
+			return b, nil
+		}
+	}
+
+	return nil, ErrProductNotFound
+}
+
+func (p *Product) ChangeBatchQuantity(batchReference string, ChangedToQuantity int) error {
+	batch, err := p.GetBatchByReference(batchReference)
+	if err != nil {
+		return err
+	}
+
+	batch.PurchasedQuantity = ChangedToQuantity
+
+	for batch.AvailableQuantity() < 0 {
+		line := batch.DeallocateOneRandomly()
+
+		p.events = append(p.events, &AllocationRequired{
+			OrderID:  string(line.OrderId),
+			SKU:      line.SKU,
+			Quantity: line.Quantity,
+		})
+	}
+	return nil
+}
+
+func (p *Product) PopEvents() []Event {
+	events := p.events
+	p.events = nil
+	return events
 }
 
 type OrderID string
@@ -148,4 +187,13 @@ func (b *Batch) AvailableQuantity() int {
 
 func (b *Batch) isInStock() bool {
 	return b.eta == nil
+}
+
+func (b *Batch) DeallocateOneRandomly() *OrderLine {
+	for _, line := range b.Allocations {
+		delete(b.Allocations, line.OrderId)
+		return &line
+	}
+
+	return nil
 }

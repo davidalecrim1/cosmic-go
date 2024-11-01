@@ -6,7 +6,7 @@ import (
 	"cosmic-go/internal/handler"
 )
 
-func InitializeRouter(h *handler.Handler) *http.ServeMux {
+func InitializeRouter(h *handler.AllocationHandler) *http.ServeMux {
 	router := http.NewServeMux()
 	router.HandleFunc("/allocate", h.Allocate)
 	router.HandleFunc("/deallocate", h.Deallocate)

@@ -3,31 +3,32 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log"
 	"net/http"
 	"time"
 
 	"cosmic-go/internal/application"
 	"cosmic-go/internal/domain"
+	eventpublisher "cosmic-go/internal/infra/event_publisher"
+	utils "cosmic-go/pkg/utils"
 
 	"github.com/go-playground/validator/v10"
 )
 
 var defaultRequestTimeout = time.Second * 30
 
-type Handler struct {
-	svc *application.Service
+type AllocationHandler struct {
+	eventPublisher *eventpublisher.EventPublisher
 }
 
-func NewHandler(svc *application.Service) *Handler {
-	return &Handler{
-		svc: svc,
+func NewAllocationHandler(e *eventpublisher.EventPublisher) *AllocationHandler {
+	return &AllocationHandler{
+		eventPublisher: e,
 	}
 }
 
-func (h *Handler) Allocate(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+func (h *AllocationHandler) Allocate(w http.ResponseWriter, r *http.Request) {
+	_, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
 	reqBody := &AllocationRequest{}
@@ -45,15 +46,19 @@ func (h *Handler) Allocate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	line := &domain.OrderLine{
+	event := &domain.AllocationRequired{
+		OrderID:  reqBody.OrderID,
 		SKU:      reqBody.SKU,
 		Quantity: reqBody.Quantity,
-		OrderId:  domain.OrderID(reqBody.OrderID),
 	}
 
-	batchref, err := h.svc.Allocate(ctx, line)
+	errChan := h.eventPublisher.Publish(event)
+	batchref := ""
 
-	if errors.Is(err, application.ErrProductNotFound) {
+	if err := utils.ErrChanWithAny(
+		errChan,
+		application.ErrProductNotFound,
+	); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 
 		response := &BadRequestResponse{
@@ -66,9 +71,9 @@ func (h *Handler) Allocate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err != nil {
+	if utils.ErrChanIsNotEmpty(errChan) {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Println("unexpected error: ", err)
+		utils.LogErrChan(errChan)
 		return
 	}
 
@@ -78,14 +83,14 @@ func (h *Handler) Allocate(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 
-	if err = json.NewEncoder(w).Encode(response); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 }
 
-func (h *Handler) Deallocate(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+func (h *AllocationHandler) Deallocate(w http.ResponseWriter, r *http.Request) {
+	_, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
 	reqBody := &DeallocateRequest{}
@@ -103,8 +108,17 @@ func (h *Handler) Deallocate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.svc.Deallocate(ctx, domain.OrderID(reqBody.OrderID), reqBody.SKU)
-	if errors.Is(err, application.ErrProductNotFound) || errors.Is(err, application.ErrInvalidOrderID) {
+	event := &domain.DeallocationRequired{
+		OrderID: reqBody.OrderID,
+		SKU:     reqBody.SKU,
+	}
+
+	errChan := h.eventPublisher.Publish(event)
+	if err := utils.ErrChanWithAny(
+		errChan,
+		application.ErrProductNotFound,
+		application.ErrInvalidOrderID,
+	); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 
 		response := &BadRequestResponse{
@@ -117,17 +131,18 @@ func (h *Handler) Deallocate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err != nil {
+	if utils.ErrChanIsNotEmpty(errChan) {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Println("unexpected error: ", err)
+
+		utils.LogErrChan(errChan)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-func (h *Handler) AddProduct(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+func (h *AllocationHandler) AddProduct(w http.ResponseWriter, r *http.Request) {
+	_, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
 	reqBody := &AddProductRequest{}
@@ -156,16 +171,16 @@ func (h *Handler) AddProduct(w http.ResponseWriter, r *http.Request) {
 		batches = append(batches, batch)
 	}
 
-	product := domain.NewProduct(
-		reqBody.SKU,
-		batches,
-		0,
-	)
+	event := &domain.CreateProduct{
+		SKU:     reqBody.SKU,
+		Batches: batches,
+	}
 
-	err := h.svc.AddProduct(ctx, product)
-	if err != nil {
+	errChan := h.eventPublisher.Publish(event)
+	if utils.ErrChanIsNotEmpty(errChan) {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Println("unexpected error: ", err)
+
+		utils.LogErrChan(errChan)
 		return
 	}
 

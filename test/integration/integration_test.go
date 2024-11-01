@@ -12,8 +12,8 @@ import (
 
 	"cosmic-go/internal/domain"
 	"cosmic-go/internal/infra/database"
-	"cosmic-go/internal/infra/events/handlers/email"
-	"cosmic-go/internal/infra/events/publisher"
+	eventpublisher "cosmic-go/internal/infra/event_publisher"
+
 	"cosmic-go/internal/infra/repository"
 	unitofwork "cosmic-go/internal/uow"
 	"cosmic-go/test/helpers"
@@ -24,14 +24,12 @@ import (
 
 var (
 	db *gorm.DB
-	ep *publisher.EventPublisher
+	ep *eventpublisher.EventPublisher
 )
 
 func TestMain(m *testing.M) {
 	db = database.InitializeDatabase()
-
-	ep = publisher.NewEventPublisher()
-	ep.RegisterHandler(&domain.OutOfStockEvent{}, &email.EmailService{})
+	ep = eventpublisher.NewEventPublisher()
 
 	code := m.Run()
 	os.Exit(code)
@@ -436,4 +434,42 @@ func TestRepository(t *testing.T) {
 			helpers.CleanUpRepositoryHelper(db)
 		})
 	})
+
+	t.Run("get product by batch reference with no allocations",
+		func(t *testing.T) {
+			ctx := context.Background()
+			tx := db.WithContext(ctx).Begin()
+			assert.NoError(t, tx.Error)
+			repoCreate := repository.NewPostgresRepository(tx)
+
+			sku := "SMALL-TABLE"
+
+			etaOne := time.Now().Add(24 * time.Hour)
+			batchOne := domain.NewBatch("batch-001", sku, 50, &etaOne)
+
+			etaTwo := time.Now().Add(48 * time.Hour)
+			batchTwo := domain.NewBatch("batch-002", sku, 100, &etaTwo)
+
+			product := domain.NewProduct(sku, []*domain.Batch{batchOne, batchTwo}, 0)
+			err := repoCreate.AddProduct(ctx, product)
+			assert.NoError(t, err)
+
+			resultedProduct, err := repoCreate.GetProductByBatchReference(ctx, batchOne.Reference)
+			assert.NoError(t, err)
+
+			foundBatch := false
+			for _, batch := range resultedProduct.Batches {
+				if batch.Reference == batchOne.Reference {
+					foundBatch = true
+					break
+				}
+			}
+			assert.True(t, foundBatch)
+			assert.Len(t, resultedProduct.Batches, 2)
+
+			t.Cleanup(func() {
+				tx.WithContext(ctx).Commit()
+				helpers.CleanUpRepositoryHelper(db)
+			})
+		})
 }

@@ -58,6 +58,25 @@ func (r *PostgresRepository) UpdateProduct(
 		Error
 }
 
+func (r *PostgresRepository) GetProductByBatchReference(
+	ctx context.Context,
+	batchReference string,
+) (*domain.Product, error) {
+	var sku string
+	err := r.db.Model(&database.Batch{}).
+		Select("sku").
+		Where("reference = ?", batchReference).
+		First(&sku).
+		Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrProductNotFound
+		}
+		return nil, err
+	}
+	return r.GetProduct(ctx, sku)
+}
+
 func (r *PostgresRepository) mapProductToDTO(p *domain.Product) *database.Product {
 	productDTO := database.Product{
 		SKU:       p.SKU,

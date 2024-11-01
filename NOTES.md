@@ -430,3 +430,27 @@ The magic words "When X, then Y" often tell us about an event that we can make c
 ```
 
 For the Domain Events in this code, I didn't liked Option 3 using Go, it would overcomplicate with the seen method in the UoW. Therefore I decided to use Option 2 and make service layer save the events as orchestraton layer.
+
+## Chapter 09: Going to Town on the Message Bus
+
+```
+In this chapter, we’ll start to make events more fundamental to the internal structure of our application. We’ll move from the current state in Before: the message bus is an optional add-on, where events are an optional side effect to the situation in The message bus is now the main entrypoint to the service layer, where everything goes via the message bus, and our app has been transformed fundamentally into a message processor.
+```
+
+```
+What Have We Achieved?
+Events are simple dataclasses that define the data structures for inputs and internal messages within our system. This is quite powerful from a DDD standpoint, since events often translate really well into business language (look up event storming if you haven’t already).
+
+Handlers are the way we react to events. They can call down to our model or call out to external services. We can define multiple handlers for a single event if we want to. Handlers can also raise other events. This allows us to be very granular about what a handler does and really stick to the SRP.
+```
+
+This might be a good architecture depending on the business goal with the software.
+
+
+```
+Our ongoing objective with these architectural patterns is to try to have the complexity of our application grow more slowly than its size. When we go all in on the message bus, as always we pay a price in terms of architectural complexity (see Whole app is a message bus: the trade-offs), but we buy ourselves a pattern that can handle almost arbitrarily complex requirements without needing any further conceptual or architectural change to the way we do things.
+
+Our ongoing objective with these architectural patterns is to try to have the complexity of our application grow more slowly than its size. When we go all in on the message bus, as always we pay a price in terms of architectural complexity (see Whole app is a message bus: the trade-offs), but we buy ourselves a pattern that can handle almost arbitrarily complex requirements without needing any further conceptual or architectural change to the way we do things.
+```
+
+This offers some reflection. In order to avoid complexity, we may create more complexity that we might not know if it is needed. Think about this when choosing an architecture. The goal is always to focus on simplicity, and when the requirements (i.e. the business goal) are complex, we design a architecture that can hold that complexity without technical debt.

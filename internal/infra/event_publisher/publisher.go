@@ -1,7 +1,7 @@
-package publisher
+package eventpublisher
 
 import (
-	"log"
+	"sync"
 
 	"cosmic-go/internal/domain"
 	unitofwork "cosmic-go/internal/uow"
@@ -26,13 +26,24 @@ func (e *EventPublisher) RegisterHandler(
 	e.handlers[event.EventName()] = append(e.handlers[event.EventName()], handler)
 }
 
-func (e *EventPublisher) Publish(event domain.Event) {
-	if handlers, ok := e.handlers[event.EventName()]; ok {
+func (ep *EventPublisher) Publish(event domain.Event) <-chan error {
+	if handlers, ok := ep.handlers[event.EventName()]; ok {
+		errChan := make(chan error, len(handlers))
+
+		var wg sync.WaitGroup
 		for _, handler := range handlers {
-			err := handler.Handle(event)
-			if err != nil {
-				log.Printf("failed to process event %v with error: %v", event, err)
-			}
+			wg.Add(1)
+			go func(e domain.Event) {
+				defer wg.Done()
+				if err := handler(event); err != nil {
+					errChan <- err
+				}
+			}(event)
 		}
+
+		wg.Wait()
+		close(errChan)
+		return errChan
 	}
+	return nil
 }

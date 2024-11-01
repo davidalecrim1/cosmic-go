@@ -2,6 +2,7 @@ package unitofwork
 
 import (
 	"context"
+	"log"
 
 	"cosmic-go/internal/domain"
 	"cosmic-go/internal/infra/repository"
@@ -13,6 +14,7 @@ type Repository interface {
 	AddProduct(ctx context.Context, p *domain.Product) error
 	GetProduct(ctx context.Context, sku string) (*domain.Product, error)
 	UpdateProduct(ctx context.Context, p *domain.Product) error
+	GetProductByBatchReference(ctx context.Context, batchReference string) (*domain.Product, error)
 }
 
 type Adapters struct {
@@ -26,13 +28,11 @@ type AllocationUoW struct {
 }
 
 type EventPublisher interface {
-	Publish(event domain.Event)
+	Publish(event domain.Event) <-chan error
 	RegisterHandler(event domain.Event, handler EventHandler)
 }
 
-type EventHandler interface {
-	Handle(event domain.Event) error
-}
+type EventHandler func(event domain.Event) error
 
 func NewAllocationUnitOfWork(db *gorm.DB, ep EventPublisher) *AllocationUoW {
 	return &AllocationUoW{
@@ -54,15 +54,24 @@ func (u *AllocationUoW) Transact(ctx context.Context, txFunc func(adapters Adapt
 	return err
 }
 
-func (u *AllocationUoW) AddEvent(event domain.Event) {
-	u.events = append(u.events, event)
+func (u *AllocationUoW) AddEvents(events []domain.Event) {
+	u.events = append(u.events, events...)
 }
 
 func (u *AllocationUoW) dispatchEvents() {
-	for _, event := range u.events {
-		go func(e domain.Event) {
-			u.ep.Publish(e)
-		}(event)
-	}
+	events := u.events
 	u.events = nil
+
+	handleErr := func(errChan <-chan error) {
+		for err := range errChan {
+			if err != nil {
+				log.Printf("error publishing event: %v", err)
+			}
+		}
+	}
+
+	for _, event := range events {
+		errChan := u.ep.Publish(event)
+		handleErr(errChan)
+	}
 }
