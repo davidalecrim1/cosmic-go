@@ -18,16 +18,16 @@ func ErrChanWithAny(errChan <-chan error, targetErrors ...error) error {
 }
 
 func ErrChanIsNotEmpty(errChan <-chan error) bool {
-	for err := range errChan {
-		if err != nil {
-			return true
-		}
-	}
-	return false
+	return !ErrChanIsEmpty(errChan)
 }
 
 func ErrChanIsEmpty(errChan <-chan error) bool {
-	return !ErrChanIsNotEmpty(errChan)
+	for err := range errChan {
+		if err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func LogErrChan(errChan <-chan error) {

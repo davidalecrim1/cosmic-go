@@ -7,8 +7,8 @@ import (
 	"cosmic-go/internal/domain"
 	"cosmic-go/internal/handler"
 
-	messagepublisher "cosmic-go/internal/infra/event_publisher"
 	emailservice "cosmic-go/internal/infra/external/email_service"
+	messagepublisher "cosmic-go/internal/infra/messagepublisher"
 	unitofwork "cosmic-go/internal/uow"
 
 	"gorm.io/gorm"

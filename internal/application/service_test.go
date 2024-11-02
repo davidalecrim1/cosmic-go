@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"cosmic-go/internal/domain"
-	messagepublisher "cosmic-go/internal/infra/event_publisher"
+	messagepublisher "cosmic-go/internal/infra/messagepublisher"
 	unitofwork "cosmic-go/internal/uow"
 	utils "cosmic-go/pkg/utils"
 

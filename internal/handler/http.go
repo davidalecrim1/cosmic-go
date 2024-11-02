@@ -9,7 +9,7 @@ import (
 
 	"cosmic-go/internal/application"
 	"cosmic-go/internal/domain"
-	messagepublisher "cosmic-go/internal/infra/event_publisher"
+	messagepublisher "cosmic-go/internal/infra/messagepublisher"
 	utils "cosmic-go/pkg/utils"
 
 	"github.com/go-playground/validator/v10"

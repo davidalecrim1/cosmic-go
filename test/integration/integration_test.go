@@ -12,7 +12,7 @@ import (
 
 	"cosmic-go/internal/domain"
 	"cosmic-go/internal/infra/database"
-	messagepublisher "cosmic-go/internal/infra/event_publisher"
+	messagepublisher "cosmic-go/internal/infra/messagepublisher"
 
 	"cosmic-go/internal/infra/repository"
 	unitofwork "cosmic-go/internal/uow"
