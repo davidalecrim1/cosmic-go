@@ -487,3 +487,41 @@ If any errors are raised, they fail fast and will bubble up.
 ```
 Retrying operations that might fail is probably the single best way to improve the resilience of our software. Again, the Unit of Work and Command Handler patterns mean that each attempt starts from a consistent state and won’t leave things half-finished.
 ```
+
+## Chapter 11: Event-Driven Architecture: Using Events to Integrate Microservices
+
+```
+Before we get into that, let’s talk about the alternatives. We regularly talk to engineers who are trying to build out a microservices architecture. Often they are migrating from an existing application, and their first instinct is to split their system into nouns.
+
+What nouns have we introduced so far in our system? Well, we have batches of stock, orders, products, and customers. So a naive attempt at breaking up the system might have looked like Context diagram with noun-based services (notice that we’ve named our system after a noun, Batches, instead of Allocation).
+```
+
+```
+This style of architecture, where we create a microservice per database table and treat our HTTP APIs as CRUD interfaces to anemic models, is the most common initial way for people to approach service-oriented design.
+
+This works fine for systems that are very simple, but it can quickly degrade into a distributed ball of mud.
+```
+
+```
+When two things have to be changed together, we say that they are coupled. We can think of this failure cascade as a kind of temporal coupling: every part of the system has to work at the same time for any part of it to work. As the system gets bigger, there is an exponentially increasing probability that some part is degraded.
+
+We can never completely avoid coupling, except by having our software not talk to any other software. What we want is to avoid inappropriate coupling. Connascence provides a mental model for understanding the strength and type of coupling inherent in different architectural styles. Read all about it at connascence.io.
+```
+
+```
+How do we get appropriate coupling? We’ve already seen part of the answer, which is that we should think in terms of verbs, not nouns. Our domain model is about modeling a business process. It’s not a static data model about a thing; it’s a model of a verb.
+
+So instead of thinking about a system for orders and a system for batches, we think about a system for ordering and a system for allocating, and so on.
+
+When we separate things this way, it’s a little easier to see which system should be responsible for what. When thinking about ordering, really we want to make sure that when we place an order, the order is placed. Everything else can happen later, so long as it happens.
+
+Like aggregates, microservices should be consistency boundaries. Between two services, we can accept eventual consistency, and that means we don’t need to rely on synchronous calls. Each service accepts commands from the outside world and raises events to record the result. Other services can listen to those events to trigger the next steps in the workflow.
+```
+
+This is nice.
+
+```
+Why is this better? First, because things can fail independently, it’s easier to handle degraded behavior: we can still take orders if the allocation system is having a bad day.
+```
+
+Also in deployment and the responsible squad for each microservice.

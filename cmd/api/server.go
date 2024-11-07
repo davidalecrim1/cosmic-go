@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 
@@ -9,13 +10,16 @@ import (
 )
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	db := database.InitializeDatabase()
 	defer func() {
 		sqlDB, _ := db.DB()
 		sqlDB.Close()
 	}()
 
-	router := server.InitializeServer(db)
+	router := server.InitializeServer(ctx, db)
 	err := http.ListenAndServe(":8080", router)
 	if err != nil {
 		log.Fatalln("Server failed to start:", err)

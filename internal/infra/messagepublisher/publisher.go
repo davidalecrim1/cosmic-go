@@ -1,10 +1,13 @@
 package messagepublisher
 
 import (
+	"context"
 	"sync"
 
 	"cosmic-go/internal/domain"
 	unitofwork "cosmic-go/internal/uow"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type MessagePublisher struct {
@@ -71,5 +74,27 @@ func (mp *MessagePublisher) PublishCommand(command domain.Command) <-chan error 
 		close(errChan)
 		return errChan
 	}
+	return nil
+}
+
+type ExternalMessagePublisher struct {
+	client *redis.Client
+}
+
+func NewExternalMessagePublisher(client *redis.Client) *ExternalMessagePublisher {
+	return &ExternalMessagePublisher{
+		client: client,
+	}
+}
+
+func (emp *ExternalMessagePublisher) PublishEvent(event domain.Event) error {
+	if err := emp.client.Publish(
+		context.Background(),
+		event.GetEventName(),
+		event,
+	).Err(); err != nil {
+		return err
+	}
+
 	return nil
 }

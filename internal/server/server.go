@@ -1,32 +1,43 @@
 package server
 
 import (
+	"context"
 	"net/http"
 
 	"cosmic-go/internal/application"
 	"cosmic-go/internal/domain"
 	"cosmic-go/internal/handler"
 
-	emailservice "cosmic-go/internal/infra/external/email_service"
 	messagepublisher "cosmic-go/internal/infra/messagepublisher"
 	unitofwork "cosmic-go/internal/uow"
 
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
-func InitializeServer(db *gorm.DB) *http.ServeMux {
-	mp := messagepublisher.NewMessagePublisher()
-	uow := unitofwork.NewAllocationUnitOfWork(db, mp)
+func InitializeServer(ctx context.Context, db *gorm.DB) *http.ServeMux {
+	internalMp := messagepublisher.NewMessagePublisher()
+
+	uow := unitofwork.NewAllocationUnitOfWork(db, internalMp)
 	svc := application.NewAllocationService(uow)
-	handler := handler.NewAllocationHandler(mp)
+	hnr := handler.NewAllocationHandler(internalMp)
 
-	em := emailservice.EmailService{}
-	mp.RegisterEventHandler(&domain.OutOfStock{}, em.SendEmail)
+	redis := messagepublisher.InitializeRedis()
+	externalMp := messagepublisher.NewExternalMessagePublisher(redis)
 
-	mp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
-	mp.RegisterCommandHandler(&domain.Allocate{}, svc.Allocate)
-	mp.RegisterCommandHandler(&domain.Deallocate{}, svc.Deallocate)
+	internalMp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
+	internalMp.RegisterCommandHandler(&domain.Allocate{}, svc.Allocate)
+	internalMp.RegisterCommandHandler(&domain.Deallocate{}, svc.Deallocate)
+	internalMp.RegisterCommandHandler(&domain.ChangeBatchQuantity{}, svc.ChangeBatchQuantity)
+	internalMp.RegisterEventHandler(&domain.Allocated{}, externalMp.PublishEvent)
 
-	router := InitializeRouter(handler)
+	InitializeExternalMessageConsumer(ctx, redis)
+
+	router := InitializeRouter(hnr)
 	return router
+}
+
+func InitializeExternalMessageConsumer(ctx context.Context, redis *redis.Client) {
+	externalMc := handler.NewExternalMessageConsumer(redis)
+	go externalMc.ConsumeChangeBatchQuantityCommand(ctx)
 }

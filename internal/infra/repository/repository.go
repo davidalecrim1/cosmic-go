@@ -47,7 +47,7 @@ func (r *PostgresRepository) UpdateProduct(
 	p *domain.Product,
 ) error {
 	dto := r.mapProductToDTO(p)
-	CurrentVersionId := dto.VersionId - 1 // this is increased in the domain previously.
+	CurrentVersionId := dto.VersionId - 1 // removing (i.e. -1) to get the current version because the domain that adds +1 (to be saved).
 
 	return r.db.
 		WithContext(ctx).

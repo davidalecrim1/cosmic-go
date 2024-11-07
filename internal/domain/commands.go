@@ -1,5 +1,7 @@
 package domain
 
+import "encoding/json"
+
 type Command interface {
 	GetCommandName() string
 }
@@ -43,10 +45,29 @@ func (r *Reallocate) GetCommandName() string {
 }
 
 type ChangeBatchQuantity struct {
-	BatchReference    string
-	ChangedToQuantity int
+	BatchReference    string `json:"batch_reference"`
+	ChangedToQuantity int    `json:"changed_to_quantity"`
 }
 
 func (b *ChangeBatchQuantity) GetCommandName() string {
 	return "ChangeBatchQuantityCommand"
+}
+
+func (b *ChangeBatchQuantity) ToJson() (string, error) {
+	data, err := json.Marshal(b)
+	if err != nil {
+		return "", err
+	}
+
+	return string(data), err
+}
+
+func NewChangeBatchQuantityFromJson(data string) (*ChangeBatchQuantity, error) {
+	command := &ChangeBatchQuantity{}
+	err := json.Unmarshal([]byte(data), command)
+	if err != nil {
+		return nil, err
+	}
+
+	return command, nil
 }

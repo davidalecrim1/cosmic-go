@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -12,12 +13,15 @@ import (
 	"testing"
 	"time"
 
+	"cosmic-go/internal/domain"
 	"cosmic-go/internal/handler"
 	"cosmic-go/internal/infra/database"
+	"cosmic-go/internal/infra/messagepublisher"
 	"cosmic-go/internal/server"
 
 	"cosmic-go/test/helpers"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 )
@@ -26,6 +30,7 @@ var (
 	db     *gorm.DB
 	ts     *httptest.Server
 	router *http.ServeMux
+	pubsub *redis.Client
 )
 
 func TestMain(m *testing.M) {
@@ -35,9 +40,14 @@ func TestMain(m *testing.M) {
 		sqlDB.Close()
 	}()
 
-	router = server.InitializeServer(db)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	router = server.InitializeServer(ctx, db)
 	ts = httptest.NewServer(router)
 	defer ts.Close()
+
+	pubsub = messagepublisher.InitializeRedis()
 
 	code := m.Run()
 	os.Exit(code)
@@ -144,7 +154,7 @@ func TestE2E_Deallocation(t *testing.T) {
 				OrderID: "order-001",
 				SKU:     "SMALL-TABLE",
 			}
-			_ = DeallocateRequestPostWrapper(t, ts, validDeallocateRequest, http.StatusOK)
+			_ = deallocateRequestPostWrapper(t, ts, validDeallocateRequest, http.StatusOK)
 
 			t.Cleanup(func() {
 				helpers.CleanUpRepositoryHelper(db)
@@ -160,7 +170,7 @@ func TestE2E_Deallocation(t *testing.T) {
 				SKU:     "SMALL-TABLE",
 			}
 
-			_ = DeallocateRequestPostWrapper(t, ts, validRequestBody, http.StatusBadRequest)
+			_ = deallocateRequestPostWrapper(t, ts, validRequestBody, http.StatusBadRequest)
 
 			t.Cleanup(func() {
 				helpers.CleanUpRepositoryHelper(db)
@@ -222,6 +232,24 @@ func TestE2E_AddProduct(t *testing.T) {
 	})
 }
 
+func TestE2E_ChangeBatchQuantityEvent(t *testing.T) {
+	t.Run("publish ChangeBatchQuantity event in external message publisher",
+		func(t *testing.T) {
+			// TODO: Add product and all
+			ctx := context.Background()
+
+			command := &domain.ChangeBatchQuantity{
+				BatchReference:    "batch-001",
+				ChangedToQuantity: 10,
+			}
+			commandAsJson, err := command.ToJson()
+			assert.NoError(t, err)
+
+			err = pubsub.Publish(ctx, command.GetCommandName(), commandAsJson).Err()
+			assert.NoError(t, err)
+		})
+}
+
 func addProductRequestPostWrapper(
 	t *testing.T,
 	ts *httptest.Server,
@@ -264,7 +292,7 @@ func allocateRequestPostWrapper(
 	return respBody
 }
 
-func DeallocateRequestPostWrapper(
+func deallocateRequestPostWrapper(
 	t *testing.T,
 	ts *httptest.Server,
 	requestBody handler.DeallocateRequest,
