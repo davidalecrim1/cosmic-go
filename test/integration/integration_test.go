@@ -369,11 +369,12 @@ func TestRepository(t *testing.T) {
 
 		updatedProduct := *initialProduct
 
-		updatedProduct.Allocate(&domain.OrderLine{
+		_, err = updatedProduct.Allocate(&domain.OrderLine{
 			OrderId:  "order-001",
 			SKU:      "SMALL-TABLE",
 			Quantity: 25,
 		})
+		assert.NoError(t, err)
 
 		err = repoUpdate.UpdateProduct(ctx, &updatedProduct)
 		assert.NoError(t, err)

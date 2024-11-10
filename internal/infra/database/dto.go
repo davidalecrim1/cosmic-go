@@ -27,8 +27,7 @@ type Batch struct {
 }
 
 func (b *Batch) BeforeSave(tx *gorm.DB) (err error) {
-	deleteDeallocatedOrderLinesFromBatch(b, tx)
-	return nil
+	return deleteDeallocatedOrderLinesFromBatch(b, tx)
 }
 
 func deleteDeallocatedOrderLinesFromBatch(b *Batch, tx *gorm.DB) error {

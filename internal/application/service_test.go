@@ -76,7 +76,7 @@ func TestService(t *testing.T) {
 			}
 
 			errChan = mp.PublishCommand(allocationEvent)
-			utils.ErrChanWithAny(errChan, ErrProductNotFound)
+			assert.NotNil(t, utils.ErrChanWithAny(errChan, ErrProductNotFound))
 		})
 
 	t.Run("add product",
@@ -150,7 +150,7 @@ func TestService(t *testing.T) {
 			}
 
 			errChan = mp.PublishCommand(deallocateEvent)
-			utils.ErrChanWithAny(errChan, ErrProductNotFound)
+			assert.NotNil(t, utils.ErrChanWithAny(errChan, ErrProductNotFound))
 
 			product, err := repo.GetProduct(ctx, sku)
 			assert.NoError(t, err)
@@ -201,7 +201,7 @@ func TestService(t *testing.T) {
 			}
 
 			errChan = mp.PublishCommand(deallocateEvent)
-			utils.ErrChanWithAny(errChan, ErrInvalidOrderID)
+			assert.NotNil(t, utils.ErrChanWithAny(errChan, ErrInvalidOrderID))
 
 			product, err := repo.GetProduct(ctx, sku)
 			assert.NoError(t, err)
@@ -344,9 +344,7 @@ func TestService(t *testing.T) {
 				Quantity: 15,
 			})
 
-			err := utils.ErrChanWithAny(errChan, domain.ErrOutOfStock)
-			assert.NotNil(t, err)
-
+			assert.NotNil(t, utils.ErrChanWithAny(errChan, domain.ErrOutOfStock))
 			assert.Equal(t, 1, len(eventHandler.ReceivedEvents))
 		})
 

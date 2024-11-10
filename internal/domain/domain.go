@@ -57,6 +57,12 @@ func (p *Product) Allocate(ol *OrderLine) (reference string, err error) {
 		}
 
 		p.VersionId++
+		p.events = append(p.events, &Allocated{
+			OrderID:  string(ol.OrderId),
+			SKU:      ol.SKU,
+			Quantity: ol.Quantity,
+			BatchRef: batch.Reference,
+		})
 		return batch.Reference, nil
 	}
 

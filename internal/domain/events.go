@@ -45,3 +45,13 @@ func (a *Allocated) ToJson() (string, error) {
 
 	return string(data), err
 }
+
+func NewAllocatedEventFromJson(data string) (*Allocated, error) {
+	event := &Allocated{}
+	err := json.Unmarshal([]byte(data), event)
+	if err != nil {
+		return nil, err
+	}
+
+	return event, nil
+}

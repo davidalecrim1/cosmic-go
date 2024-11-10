@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"cosmic-go/internal/infra/database"
+	"cosmic-go/internal/infra/messagepublisher"
 	"cosmic-go/internal/server"
 )
 
@@ -19,7 +20,9 @@ func main() {
 		sqlDB.Close()
 	}()
 
-	router := server.InitializeServer(ctx, db)
+	pubsub := messagepublisher.InitializeRedis()
+
+	router := server.InitializeServer(ctx, db, pubsub)
 	err := http.ListenAndServe(":8080", router)
 	if err != nil {
 		log.Fatalln("Server failed to start:", err)

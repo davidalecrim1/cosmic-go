@@ -31,6 +31,10 @@ func ErrChanIsEmpty(errChan <-chan error) bool {
 }
 
 func LogErrChan(errChan <-chan error) {
+	if errChan == nil {
+		return
+	}
+
 	for err := range errChan {
 		if err != nil {
 			log.Println(err.Error())

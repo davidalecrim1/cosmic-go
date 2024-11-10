@@ -16,8 +16,14 @@ type ExternalMessageConsumer struct {
 	imp    *messagepublisher.MessagePublisher
 }
 
-func NewExternalMessageConsumer(client *redis.Client) *ExternalMessageConsumer {
-	return &ExternalMessageConsumer{client: client}
+func NewExternalMessageConsumer(
+	client *redis.Client,
+	imp *messagepublisher.MessagePublisher,
+) *ExternalMessageConsumer {
+	return &ExternalMessageConsumer{
+		client: client,
+		imp:    imp,
+	}
 }
 
 func (emc *ExternalMessageConsumer) ConsumeChangeBatchQuantityCommand(ctx context.Context) {
@@ -29,7 +35,7 @@ func (emc *ExternalMessageConsumer) ConsumeChangeBatchQuantityCommand(ctx contex
 		case <-ctx.Done():
 			return
 		case msg := <-ch:
-			command, err := domain.NewChangeBatchQuantityFromJson(msg.String())
+			command, err := domain.NewChangeBatchQuantityFromJson(msg.Payload)
 			if err != nil {
 				log.Printf("failed to read command from external pub/sub: %v", err)
 				return

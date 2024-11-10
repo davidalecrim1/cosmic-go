@@ -15,29 +15,36 @@ import (
 	"gorm.io/gorm"
 )
 
-func InitializeServer(ctx context.Context, db *gorm.DB) *http.ServeMux {
+func InitializeServer(ctx context.Context, db *gorm.DB, pubsub *redis.Client) *http.ServeMux {
 	internalMp := messagepublisher.NewMessagePublisher()
 
 	uow := unitofwork.NewAllocationUnitOfWork(db, internalMp)
 	svc := application.NewAllocationService(uow)
 	hnr := handler.NewAllocationHandler(internalMp)
 
-	redis := messagepublisher.InitializeRedis()
-	externalMp := messagepublisher.NewExternalMessagePublisher(redis)
+	externalMp := messagepublisher.NewExternalMessagePublisher(pubsub)
 
+	// add here internal message publisher handlers
 	internalMp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
 	internalMp.RegisterCommandHandler(&domain.Allocate{}, svc.Allocate)
 	internalMp.RegisterCommandHandler(&domain.Deallocate{}, svc.Deallocate)
 	internalMp.RegisterCommandHandler(&domain.ChangeBatchQuantity{}, svc.ChangeBatchQuantity)
 	internalMp.RegisterEventHandler(&domain.Allocated{}, externalMp.PublishEvent)
+	internalMp.RegisterEventHandler(&domain.BatchQuantityChangedRealocationIsNeeded{}, svc.AllocationIsNeeded)
 
-	InitializeExternalMessageConsumer(ctx, redis)
+	InitializeExternalMessageConsumer(ctx, pubsub, internalMp)
 
 	router := InitializeRouter(hnr)
 	return router
 }
 
-func InitializeExternalMessageConsumer(ctx context.Context, redis *redis.Client) {
-	externalMc := handler.NewExternalMessageConsumer(redis)
+func InitializeExternalMessageConsumer(
+	ctx context.Context,
+	pubsub *redis.Client,
+	imp *messagepublisher.MessagePublisher,
+) {
+	externalMc := handler.NewExternalMessageConsumer(pubsub, imp)
+
+	// add here new consumers for external messages
 	go externalMc.ConsumeChangeBatchQuantityCommand(ctx)
 }

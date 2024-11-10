@@ -2,6 +2,7 @@ package messagepublisher
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 
 	"cosmic-go/internal/domain"
@@ -64,17 +65,16 @@ func (mp *MessagePublisher) RegisterCommandHandler(
 }
 
 func (mp *MessagePublisher) PublishCommand(command domain.Command) <-chan error {
-	if handler, ok := mp.commandHandler[command.GetCommandName()]; ok {
-		errChan := make(chan error, 1)
+	errChan := make(chan error, 1)
 
+	if handler, ok := mp.commandHandler[command.GetCommandName()]; ok {
 		if err := handler(command); err != nil {
 			errChan <- err
 		}
-
-		close(errChan)
-		return errChan
 	}
-	return nil
+
+	close(errChan)
+	return errChan
 }
 
 type ExternalMessagePublisher struct {
@@ -88,10 +88,15 @@ func NewExternalMessagePublisher(client *redis.Client) *ExternalMessagePublisher
 }
 
 func (emp *ExternalMessagePublisher) PublishEvent(event domain.Event) error {
+	eventAsJson, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+
 	if err := emp.client.Publish(
 		context.Background(),
 		event.GetEventName(),
-		event,
+		eventAsJson,
 	).Err(); err != nil {
 		return err
 	}

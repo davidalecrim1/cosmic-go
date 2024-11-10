@@ -43,11 +43,11 @@ func TestMain(m *testing.M) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	router = server.InitializeServer(ctx, db)
+	pubsub = messagepublisher.InitializeRedis()
+
+	router = server.InitializeServer(ctx, db, pubsub)
 	ts = httptest.NewServer(router)
 	defer ts.Close()
-
-	pubsub = messagepublisher.InitializeRedis()
 
 	code := m.Run()
 	os.Exit(code)
@@ -233,10 +233,46 @@ func TestE2E_AddProduct(t *testing.T) {
 }
 
 func TestE2E_ChangeBatchQuantityEvent(t *testing.T) {
-	t.Run("publish ChangeBatchQuantity event in external message publisher",
+	t.Run("trigger ChangeBatchQuantity command to reallocate",
 		func(t *testing.T) {
-			// TODO: Add product and all
-			ctx := context.Background()
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+			defer cancel()
+
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
+
+			tomorrowEta := time.Now().Add(time.Hour * 24)
+			product := handler.AddProductRequest{
+				SKU: "SMALL-TABLE",
+				Batches: []*handler.BatchDTO{
+					{
+						Reference:         "batch-001",
+						PurchasedQuantity: 25,
+						ETA:               nil,
+					},
+					{
+						Reference:         "batch-002",
+						PurchasedQuantity: 50,
+						ETA:               &tomorrowEta,
+					},
+				},
+			}
+			addProductRequestPostWrapper(t, ts, product, http.StatusCreated)
+
+			allocation := handler.AllocationRequest{
+				OrderID:  "order-001",
+				SKU:      "SMALL-TABLE",
+				Quantity: 20,
+			}
+
+			_ = allocateRequestPostWrapper(t, ts, allocation, http.StatusCreated)
+
+			expectedExternalEvent := &domain.Allocated{}
+			expectedEventChannel := pubsub.
+				Subscribe(ctx, expectedExternalEvent.
+					GetEventName()).
+				Channel()
 
 			command := &domain.ChangeBatchQuantity{
 				BatchReference:    "batch-001",
@@ -247,6 +283,19 @@ func TestE2E_ChangeBatchQuantityEvent(t *testing.T) {
 
 			err = pubsub.Publish(ctx, command.GetCommandName(), commandAsJson).Err()
 			assert.NoError(t, err)
+
+			for {
+				select {
+				case <-ctx.Done():
+					t.Error("timeout waiting for external event")
+					return
+				case event := <-expectedEventChannel:
+					resultedEvent, err := domain.NewAllocatedEventFromJson(event.Payload)
+					assert.NoError(t, err)
+					assert.Equal(t, "batch-002", resultedEvent.BatchRef)
+					return
+				}
+			}
 		})
 }
 
