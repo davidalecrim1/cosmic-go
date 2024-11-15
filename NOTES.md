@@ -525,3 +525,8 @@ Why is this better? First, because things can fail independently, it’s easier 
 ```
 
 Also in deployment and the responsible squad for each microservice.
+
+## Internal Versus External Events
+```
+It’s a good idea to keep the distinction between internal and external events clear. Some events may come from the outside, and some events may get upgraded and published externally, but not all of them will. This is particularly important if you get into event sourcing (very much a topic for another book, though).
+```
