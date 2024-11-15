@@ -18,10 +18,10 @@ import (
 var defaultRequestTimeout = time.Second * 30
 
 type AllocationHandler struct {
-	messagePublisher *messagepublisher.MessagePublisher
+	messagePublisher *messagepublisher.InternalMessagePublisher
 }
 
-func NewAllocationHandler(e *messagepublisher.MessagePublisher) *AllocationHandler {
+func NewAllocationHandler(e *messagepublisher.InternalMessagePublisher) *AllocationHandler {
 	return &AllocationHandler{
 		messagePublisher: e,
 	}

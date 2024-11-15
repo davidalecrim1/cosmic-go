@@ -11,28 +11,28 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type MessagePublisher struct {
+type InternalMessagePublisher struct {
 	eventHandlers  map[string][]unitofwork.EventHandler
 	commandHandler map[string]unitofwork.CommandHandler
 }
 
-func NewMessagePublisher() *MessagePublisher {
-	return &MessagePublisher{}
+func NewInternalMessagePublisher() *InternalMessagePublisher {
+	return &InternalMessagePublisher{}
 }
 
-func (e *MessagePublisher) RegisterEventHandler(
+func (imp *InternalMessagePublisher) RegisterEventHandler(
 	event domain.Event,
 	handler unitofwork.EventHandler,
 ) {
-	if e.eventHandlers == nil {
-		e.eventHandlers = make(map[string][]unitofwork.EventHandler)
+	if imp.eventHandlers == nil {
+		imp.eventHandlers = make(map[string][]unitofwork.EventHandler)
 	}
 
-	e.eventHandlers[event.GetEventName()] = append(e.eventHandlers[event.GetEventName()], handler)
+	imp.eventHandlers[event.GetEventName()] = append(imp.eventHandlers[event.GetEventName()], handler)
 }
 
-func (mp *MessagePublisher) PublishEvent(event domain.Event) <-chan error {
-	if eventHandlers, ok := mp.eventHandlers[event.GetEventName()]; ok {
+func (imp *InternalMessagePublisher) PublishEvent(event domain.Event) <-chan error {
+	if eventHandlers, ok := imp.eventHandlers[event.GetEventName()]; ok {
 		errChan := make(chan error, len(eventHandlers))
 
 		var wg sync.WaitGroup
@@ -53,21 +53,21 @@ func (mp *MessagePublisher) PublishEvent(event domain.Event) <-chan error {
 	return nil
 }
 
-func (mp *MessagePublisher) RegisterCommandHandler(
+func (imp *InternalMessagePublisher) RegisterCommandHandler(
 	command domain.Command,
 	handler unitofwork.CommandHandler,
 ) {
-	if mp.commandHandler == nil {
-		mp.commandHandler = make(map[string]unitofwork.CommandHandler)
+	if imp.commandHandler == nil {
+		imp.commandHandler = make(map[string]unitofwork.CommandHandler)
 	}
 
-	mp.commandHandler[command.GetCommandName()] = handler
+	imp.commandHandler[command.GetCommandName()] = handler
 }
 
-func (mp *MessagePublisher) PublishCommand(command domain.Command) <-chan error {
+func (imp *InternalMessagePublisher) PublishCommand(command domain.Command) <-chan error {
 	errChan := make(chan error, 1)
 
-	if handler, ok := mp.commandHandler[command.GetCommandName()]; ok {
+	if handler, ok := imp.commandHandler[command.GetCommandName()]; ok {
 		if err := handler(command); err != nil {
 			errChan <- err
 		}

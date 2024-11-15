@@ -27,10 +27,10 @@ import (
 )
 
 var (
-	db     *gorm.DB
-	ts     *httptest.Server
-	router *http.ServeMux
-	pubsub *redis.Client
+	db          *gorm.DB
+	ts          *httptest.Server
+	router      *http.ServeMux
+	redisClient *redis.Client
 )
 
 func TestMain(m *testing.M) {
@@ -43,9 +43,9 @@ func TestMain(m *testing.M) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pubsub = messagepublisher.InitializeRedis()
+	redisClient = messagepublisher.InitializeRedis()
 
-	router = server.InitializeServer(ctx, db, pubsub)
+	router = server.InitializeServer(ctx, db, redisClient)
 	ts = httptest.NewServer(router)
 	defer ts.Close()
 
@@ -269,7 +269,7 @@ func TestE2E_ChangeBatchQuantityEvent(t *testing.T) {
 			_ = allocateRequestPostWrapper(t, ts, allocation, http.StatusCreated)
 
 			expectedExternalEvent := &domain.Allocated{}
-			expectedEventChannel := pubsub.
+			expectedEventChannel := redisClient.
 				Subscribe(ctx, expectedExternalEvent.
 					GetEventName()).
 				Channel()
@@ -281,7 +281,7 @@ func TestE2E_ChangeBatchQuantityEvent(t *testing.T) {
 			commandAsJson, err := command.ToJson()
 			assert.NoError(t, err)
 
-			err = pubsub.Publish(ctx, command.GetCommandName(), commandAsJson).Err()
+			err = redisClient.Publish(ctx, command.GetCommandName(), commandAsJson).Err()
 			assert.NoError(t, err)
 
 			for {

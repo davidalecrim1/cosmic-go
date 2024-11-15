@@ -13,12 +13,12 @@ import (
 
 type ExternalMessageConsumer struct {
 	client *redis.Client
-	imp    *messagepublisher.MessagePublisher
+	imp    *messagepublisher.InternalMessagePublisher
 }
 
 func NewExternalMessageConsumer(
 	client *redis.Client,
-	imp *messagepublisher.MessagePublisher,
+	imp *messagepublisher.InternalMessagePublisher,
 ) *ExternalMessageConsumer {
 	return &ExternalMessageConsumer{
 		client: client,

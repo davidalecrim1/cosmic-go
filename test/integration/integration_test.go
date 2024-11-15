@@ -23,13 +23,13 @@ import (
 )
 
 var (
-	db *gorm.DB
-	ep *messagepublisher.MessagePublisher
+	db  *gorm.DB
+	imp *messagepublisher.InternalMessagePublisher
 )
 
 func TestMain(m *testing.M) {
 	db = database.InitializeDatabase()
-	ep = messagepublisher.NewMessagePublisher()
+	imp = messagepublisher.NewInternalMessagePublisher()
 
 	code := m.Run()
 	os.Exit(code)
@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 func TestUnitOfWork(t *testing.T) {
 	t.Run("run a valid transaction with uow on repository", func(t *testing.T) {
 		ctx := context.Background()
-		uow := unitofwork.NewAllocationUnitOfWork(db, ep)
+		uow := unitofwork.NewAllocationUnitOfWork(db, imp)
 
 		sku := "ROUND-TABLE"
 		product := domain.NewProduct(sku, []*domain.Batch{domain.NewBatch(
@@ -77,7 +77,7 @@ func TestUnitOfWork(t *testing.T) {
 
 	t.Run("run a transaction that results in rollback", func(t *testing.T) {
 		ctx := context.Background()
-		uow := unitofwork.NewAllocationUnitOfWork(db, ep)
+		uow := unitofwork.NewAllocationUnitOfWork(db, imp)
 
 		sku := "ROUND-TABLE"
 		product := domain.NewProduct(sku, []*domain.Batch{domain.NewBatch(
@@ -119,7 +119,7 @@ func TestUnitOfWork(t *testing.T) {
 		func(t *testing.T) {
 			helpers.CleanUpRepositoryHelper(db)
 			ctx := context.Background()
-			uow := unitofwork.NewAllocationUnitOfWork(db, ep)
+			uow := unitofwork.NewAllocationUnitOfWork(db, imp)
 
 			sku := "ROUND-TABLE"
 			product := domain.NewProduct(sku, []*domain.Batch{domain.NewBatch(
