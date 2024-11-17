@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestE2E_Allocation(t *testing.T) {
-	t.Run("api valid allocation returns 201",
+	t.Run("api valid allocation returns 202",
 		func(t *testing.T) {
 			earlyEta := time.Now()
 			earlyBatch := &handler.BatchDTO{
@@ -91,14 +91,15 @@ func TestE2E_Allocation(t *testing.T) {
 				Quantity: orderQuantity,
 			}
 
-			respBody := allocateRequestPostWrapper(t, ts, allocationRequest, http.StatusCreated)
-			respAllocation := &handler.AllocationResponse{}
-			err := json.Unmarshal(respBody, respAllocation)
+			_ = allocateRequestPostWrapper(t, ts, allocationRequest, http.StatusCreated)
+
+			respBody := allocationsRequestGetWrapper(t, ts, "order-001")
+			var response handler.AllocationsResponse
+
+			err := json.Unmarshal(respBody, &response)
 			assert.NoError(t, err)
 
-			// TODO: Fix this given the return of "" in the next chapter
-			// expectedBatch := "batch-003"
-			// assert.Equal(t, expectedBatch, respAllocation.BatchRef)
+			assert.Equal(t, response.Allocations[0].SKU, "SMALL-TABLE")
 
 			t.Cleanup(func() {
 				helpers.CleanUpRepositoryHelper(db)
@@ -299,6 +300,65 @@ func TestE2E_ChangeBatchQuantityEvent(t *testing.T) {
 		})
 }
 
+func TestE2E_Allocations(t *testing.T) {
+	t.Run("api returns 200 for get allocations", func(t *testing.T) {
+		t.Cleanup(func() {
+			helpers.CleanUpRepositoryHelper(db)
+		})
+
+		validEta := time.Now().Add(time.Hour * 24)
+		firstValidBatch := &handler.BatchDTO{
+			Reference:         "batch-001",
+			PurchasedQuantity: 100,
+			ETA:               &validEta,
+		}
+
+		firstValidProduct := handler.AddProductRequest{
+			SKU:     "SMALL-TABLE",
+			Batches: []*handler.BatchDTO{firstValidBatch},
+		}
+
+		secondValidBatch := &handler.BatchDTO{
+			Reference:         "batch-002",
+			PurchasedQuantity: 100,
+			ETA:               nil,
+		}
+
+		secondValidProduct := handler.AddProductRequest{
+			SKU:     "LARGE-TABLE",
+			Batches: []*handler.BatchDTO{secondValidBatch},
+		}
+
+		addProductRequestPostWrapper(t, ts, firstValidProduct, http.StatusCreated)
+		addProductRequestPostWrapper(t, ts, secondValidProduct, http.StatusCreated)
+
+		firstValidAllocation := handler.AllocationRequest{
+			OrderID:  "order-001",
+			Quantity: 20,
+			SKU:      "SMALL-TABLE",
+		}
+
+		secondValidAllocation := handler.AllocationRequest{
+			OrderID:  "order-001",
+			Quantity: 40,
+			SKU:      "LARGE-TABLE",
+		}
+		_ = allocateRequestPostWrapper(t, ts, firstValidAllocation, http.StatusCreated)
+		_ = allocateRequestPostWrapper(t, ts, secondValidAllocation, http.StatusCreated)
+
+		var response handler.AllocationsResponse
+		respBody := allocationsRequestGetWrapper(t, ts, "order-001")
+		err := json.Unmarshal(respBody, &response)
+		assert.NoError(t, err)
+
+		assert.Equal(t, response.Allocations[0].SKU, firstValidAllocation.SKU)
+		assert.Equal(t, response.Allocations[0].BatchReference, firstValidBatch.Reference)
+
+		assert.Equal(t, response.Allocations[1].SKU, secondValidAllocation.SKU)
+		assert.Equal(t, response.Allocations[1].BatchReference, secondValidBatch.Reference)
+	})
+}
+
 func addProductRequestPostWrapper(
 	t *testing.T,
 	ts *httptest.Server,
@@ -358,6 +418,23 @@ func deallocateRequestPostWrapper(
 	defer resp.Body.Close()
 
 	assert.Equal(t, expectedStatus, resp.StatusCode)
+
+	respBody, err = io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+
+	return respBody
+}
+
+func allocationsRequestGetWrapper(
+	t *testing.T,
+	ts *httptest.Server,
+	orderID string,
+) (respBody []byte) {
+	resp, err := http.Get(ts.URL + "/allocations/" + orderID)
+	assert.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	respBody, err = io.ReadAll(resp.Body)
 	assert.NoError(t, err)

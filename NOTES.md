@@ -526,7 +526,31 @@ Why is this better? First, because things can fail independently, it’s easier 
 
 Also in deployment and the responsible squad for each microservice.
 
-## Internal Versus External Events
+### Internal Versus External Events
 ```
 It’s a good idea to keep the distinction between internal and external events clear. Some events may come from the outside, and some events may get upgraded and published externally, but not all of them will. This is particularly important if you get into event sourcing (very much a topic for another book, though).
 ```
+
+## Chapter 12: Command-Query Responsibility Segregation (CQRS)
+```
+In this chapter, we’re going to start with a fairly uncontroversial insight: reads (queries) and writes (commands) are different, so they should be treated differently (or have their responsibilities segregated, if you will). Then we’re going to push that insight as far as we can.
+```
+
+This is an interesting perspective.
+
+```
+As soon as we render the product page, the data is already stale. This insight is key to understanding why reads can be safely inconsistent: we’ll always need to check the current state of our system when we come to allocate, because all distributed systems are inconsistent. As soon as you have a web server and two customers, you have the potential for stale data.
+
+No matter what we do, we’re always going to find that our software systems are inconsistent with reality, and so we’ll always need business processes to cope with these edge cases. It’s OK to trade performance for consistency on the read side, because stale data is essentially unavoidable.
+```
+
+Nice perspective on consistency on distribuited systems.
+
+### Post/Redirect/Get and CQS
+```
+This technique is a simple example of command-query separation (CQS).[1] We follow one simple rule: functions should either modify state or answer questions, but never both. This makes software easier to reason about: we should always be able to ask, "Are the lights on?" without flicking the light switch.
+
+When building APIs, we can apply the same design technique by returning a 201 Created, or a 202 Accepted, with a Location header containing the URI of our new resources. What’s important here isn’t the status code we use but the logical separation of work into a write phase and a query phase.
+```
+
+Based on this, I have created a new layer on the software for queries (i.e. reads), this based on CQRS should have it's own domain logic and operation handling. Because here it's simple, we are just using a thin http layer with the database instead of the UoW, Message Bus and Service Layer.

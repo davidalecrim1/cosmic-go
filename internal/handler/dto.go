@@ -8,10 +8,6 @@ type AllocationRequest struct {
 	Quantity int    `json:"quantity" validate:"required"`
 }
 
-type AllocationResponse struct {
-	BatchRef string `json:"batchref"`
-}
-
 type DeallocateRequest struct {
 	OrderID string `json:"orderid" validate:"required"`
 	SKU     string `json:"sku" validate:"required"`
@@ -30,4 +26,13 @@ type BatchDTO struct {
 
 type BadRequestResponse struct {
 	Message string `json:"message"`
+}
+
+type AllocationResponse struct {
+	SKU            string `json:"sku"`
+	BatchReference string `json:"batch_reference"`
+}
+
+type AllocationsResponse struct {
+	Allocations []*AllocationResponse
 }

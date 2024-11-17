@@ -18,15 +18,16 @@ import (
 var defaultRequestTimeout = time.Second * 30
 
 type AllocationHandler struct {
-	messagePublisher *messagepublisher.InternalMessagePublisher
+	imp *messagepublisher.InternalMessagePublisher
 }
 
-func NewAllocationHandler(e *messagepublisher.InternalMessagePublisher) *AllocationHandler {
+func NewAllocationHandler(imp *messagepublisher.InternalMessagePublisher) *AllocationHandler {
 	return &AllocationHandler{
-		messagePublisher: e,
+		imp: imp,
 	}
 }
 
+// POST
 func (h *AllocationHandler) Allocate(w http.ResponseWriter, r *http.Request) {
 	_, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
@@ -52,8 +53,7 @@ func (h *AllocationHandler) Allocate(w http.ResponseWriter, r *http.Request) {
 		Quantity: reqBody.Quantity,
 	}
 
-	errChan := h.messagePublisher.PublishCommand(command)
-	batchref := ""
+	errChan := h.imp.PublishCommand(command)
 
 	if err := utils.ErrChanWithAny(
 		errChan,
@@ -77,16 +77,7 @@ func (h *AllocationHandler) Allocate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := &AllocationResponse{
-		BatchRef: batchref,
-	}
-
 	w.WriteHeader(http.StatusCreated)
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 }
 
 func (h *AllocationHandler) Deallocate(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +104,7 @@ func (h *AllocationHandler) Deallocate(w http.ResponseWriter, r *http.Request) {
 		SKU:     reqBody.SKU,
 	}
 
-	errChan := h.messagePublisher.PublishCommand(command)
+	errChan := h.imp.PublishCommand(command)
 	if err := utils.ErrChanWithAny(
 		errChan,
 		application.ErrProductNotFound,
@@ -176,7 +167,7 @@ func (h *AllocationHandler) AddProduct(w http.ResponseWriter, r *http.Request) {
 		Batches: batches,
 	}
 
-	errChan := h.messagePublisher.PublishCommand(command)
+	errChan := h.imp.PublishCommand(command)
 	if utils.ErrChanIsNotEmpty(errChan) {
 		w.WriteHeader(http.StatusInternalServerError)
 
