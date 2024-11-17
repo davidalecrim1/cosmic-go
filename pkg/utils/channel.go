@@ -30,6 +30,7 @@ func ErrChanIsEmpty(errChan <-chan error) bool {
 	return true
 }
 
+// logs the errors in channel if they aren't nil
 func LogErrChan(errChan <-chan error) {
 	if errChan == nil {
 		return
