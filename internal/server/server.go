@@ -23,14 +23,15 @@ func InitializeServer(ctx context.Context, db *gorm.DB, redisClient *redis.Clien
 	hnr := handler.NewAllocationHandler(imp)
 	hnrv := handler.NewAllocationViewHandler(db)
 
-	externalMp := messagepublisher.NewExternalMessagePublisher(redisClient)
+	emp := messagepublisher.NewExternalMessagePublisher(redisClient)
 
 	// add here new internal message publisher services
 	imp.RegisterCommandHandler(&domain.CreateProduct{}, svc.AddProduct)
 	imp.RegisterCommandHandler(&domain.Allocate{}, svc.Allocate)
 	imp.RegisterCommandHandler(&domain.Deallocate{}, svc.Deallocate)
 	imp.RegisterCommandHandler(&domain.ChangeBatchQuantity{}, svc.ChangeBatchQuantity)
-	imp.RegisterEventHandler(&domain.Allocated{}, externalMp.PublishEvent)
+
+	imp.RegisterEventHandler(&domain.Allocated{}, emp.PublishEvent)
 	imp.RegisterEventHandler(&domain.BatchQuantityChangedRealocationIsNeeded{}, svc.AllocationIsNeeded)
 
 	InitializeExternalMessageConsumer(ctx, redisClient, imp)

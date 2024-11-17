@@ -1,14 +1,10 @@
 package messagepublisher
 
 import (
-	"context"
-	"encoding/json"
 	"sync"
 
 	"cosmic-go/internal/domain"
 	unitofwork "cosmic-go/internal/uow"
-
-	"github.com/redis/go-redis/v9"
 )
 
 type InternalMessagePublisher struct {
@@ -75,31 +71,4 @@ func (imp *InternalMessagePublisher) PublishCommand(command domain.Command) <-ch
 
 	close(errChan)
 	return errChan
-}
-
-type ExternalMessagePublisher struct {
-	client *redis.Client
-}
-
-func NewExternalMessagePublisher(client *redis.Client) *ExternalMessagePublisher {
-	return &ExternalMessagePublisher{
-		client: client,
-	}
-}
-
-func (emp *ExternalMessagePublisher) PublishEvent(event domain.Event) error {
-	eventAsJson, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-
-	if err := emp.client.Publish(
-		context.Background(),
-		event.GetEventName(),
-		eventAsJson,
-	).Err(); err != nil {
-		return err
-	}
-
-	return nil
 }

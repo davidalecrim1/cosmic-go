@@ -20,9 +20,10 @@ func main() {
 		sqlDB.Close()
 	}()
 
-	pubsub := messagepublisher.InitializeRedis()
+	redisClient := messagepublisher.InitializeRedis()
 
-	router := server.InitializeServer(ctx, db, pubsub)
+	router := server.InitializeServer(ctx, db, redisClient)
+
 	err := http.ListenAndServe(":8080", router)
 	if err != nil {
 		log.Fatalln("Server failed to start:", err)

@@ -27,17 +27,17 @@ type AllocationUoW struct {
 	mp     MessagePublisher
 }
 
+type (
+	EventHandler   func(event domain.Event) error
+	CommandHandler func(command domain.Command) error
+)
+
 type MessagePublisher interface {
 	PublishEvent(event domain.Event) <-chan error
 	PublishCommand(command domain.Command) <-chan error
 	RegisterEventHandler(event domain.Event, handler EventHandler)
 	RegisterCommandHandler(command domain.Command, handler CommandHandler)
 }
-
-type (
-	EventHandler   func(event domain.Event) error
-	CommandHandler func(command domain.Command) error
-)
 
 func NewAllocationUnitOfWork(db *gorm.DB, mp MessagePublisher) *AllocationUoW {
 	return &AllocationUoW{
