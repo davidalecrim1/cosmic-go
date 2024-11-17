@@ -606,3 +606,22 @@ In our book example, the read operations act on quite different conceptual entit
 ```
 
 Maybe this is also a domain issue with the book. The domain could be improved to allow both Reads and Writes instead of working nice with writes and HELL with reads.
+
+## Epilogue
+
+```
+Aggregates are a consistency boundary. In general, each use case should update a single aggregate at a time. One handler fetches one aggregate from a repository, modifies its state, and raises any events that happen as a result. If you need data from another part of the system, it’s totally fine to use a read model, but avoid updating multiple aggregates in a single transaction. When we choose to separate code into different aggregates, we’re explicitly choosing to make them eventually consistent with one another.
+
+Bidirectional links are often a sign that your aggregates aren’t right. In our original code, a Document knew about its containing Folder, and the Folder had a collection of Documents. This makes it easy to traverse the object graph but stops us from thinking properly about the consistency boundaries we need. We break apart aggregates by using references instead. In the new model, a Document had reference to its parent_folder but had no way to directly access the Folder.
+```
+
+```
+If we needed to read data, we avoided writing complex loops and transforms and tried to replace them with straight SQL. For example, one of our screens was a tree view of folders and documents.
+```
+
+Remember how to use ORM and SQL. It's not one or the other.
+
+```
+We recommend domain modeling as a first step. In many overgrown systems, the engineers, product owners, and customers no longer speak the same language. Business stakeholders speak about the system in abstract, process-focused terms, while developers are forced to speak about the system as it physically exists in its wild and chaotic state.
+```
+
