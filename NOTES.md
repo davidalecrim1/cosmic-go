@@ -554,3 +554,55 @@ When building APIs, we can apply the same design technique by returning a 201 Cr
 ```
 
 Based on this, I have created a new layer on the software for queries (i.e. reads), this based on CQRS should have it's own domain logic and operation handling. Because here it's simple, we are just using a thin http layer with the database instead of the UoW, Message Bus and Service Layer.
+
+### Your Domain Model Is Not Optimized for Read Operations
+```
+What we’re seeing here are the effects of having a domain model that is designed primarily for write operations, while our requirements for reads are often conceptually quite different.
+
+This is the chin-stroking-architect’s justification for CQRS. As we’ve said before, a domain model is not a data model—​we’re trying to capture the way the business works: workflow, rules around state changes, messages exchanged; concerns about how the system reacts to external events and user input. Most of this stuff is totally irrelevant for read-only operations.
+
+This justification for CQRS is related to the justification for the Domain Model pattern. If you’re building a simple CRUD app, reads and writes are going to be closely related, so you don’t need a domain model or CQRS. But the more complex your domain, the more likely you are to need both.
+```
+
+Remember that CQRS is for complex domains.
+
+```
+But is that actually any easier to write or understand than the raw SQL version from the code example in Hold On to Your Lunch, Folks? It may not look too bad up there, but we can tell you it took several attempts, and plenty of digging through the SQLAlchemy docs. SQL is just SQL.
+```
+
+I do like the idea of not relying too much on the ORM.
+
+### SELECT N+1 and Other Performance Considerations
+```
+The so-called SELECT N+1 problem is a common performance problem with ORMs: when retrieving a list of objects, your ORM will often perform an initial query to, say, get all the IDs of the objects it needs, and then issue individual queries for each object to retrieve their attributes. This is especially likely if there are any foreign-key relationships on your objects.
+```
+
+If your "product" table has relationships, the ORM will get all the objects, then get each single object again with the details of the ORM. Some ORM already have features to help this.
+
+```
+Beyond SELECT N+1, you may have other reasons for wanting to decouple the way you persist state changes from the way that you retrieve current state. A set of fully normalized relational tables is a good way to make sure that write operations never cause data corruption. But retrieving data using lots of joins can be slow. It’s common in such cases to add some denormalized views, build read replicas, or even add caching layers.
+```
+
+I do agree with this.
+
+```
+Because read replicas can be inconsistent, there’s no limit to how many we can have. If you’re struggling to scale a system with a complex data store, ask whether you could build a simpler read model.
+
+Keeping the read model up to date is the challenge! Database views (materialized or otherwise) and triggers are a common solution, but that limits you to your database. We’d like to show you how to reuse our event-driven architecture instead.
+```
+
+I've decided not do to the Denormalized Table as in the book, because with Go I don't see the UoW fitting with direct interaction with the database. Based on what I've built, I would need a Read Repository, but it seems quite simplier to just dependency inject the database on the HTTP layer for read operations. I don't see this mix of UoW (given it is for write operations) and Repository. It would only make sense to create a UoW and Repository, but given Go is statically typed, that means creating also a new domain for reads. This is too much for such a simple read operation.
+
+Based on all the options of the chapter, the best one I see with Go is using a Denormalized View.
+
+```
+Often, your read operations will be acting on the same conceptual objects as your write model, so using the ORM, adding some read methods to your repositories, and using domain model classes for your read operations is just fine.
+```
+
+Remember CQRS is for **COMPLEX** domain. It is almost as breaking the application into READ and WRITE, with each using it's own database. I would say to everyone, **KISS** (keep it simple stupid!). Don't overengineer something because it looks cool. Know if you really need it. Study about it. Make an MVP with the new approach.
+
+```
+In our book example, the read operations act on quite different conceptual entities to our domain model. The allocation service thinks in terms of Batches for a single SKU, but users care about allocations for a whole order, with multiple SKUs, so using the ORM ends up being a little awkward. We’d be quite tempted to go with the raw-SQL view we showed right at the beginning of the chapter.
+```
+
+Maybe this is also a domain issue with the book. The domain could be improved to allow both Reads and Writes instead of working nice with writes and HELL with reads.
