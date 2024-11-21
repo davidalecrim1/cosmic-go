@@ -37,6 +37,10 @@ func TestMain(m *testing.M) {
 
 func TestUnitOfWork(t *testing.T) {
 	t.Run("run a valid transaction with uow on repository", func(t *testing.T) {
+		t.Cleanup(func() {
+			helpers.CleanUpRepositoryHelper(db)
+		})
+
 		ctx := context.Background()
 		uow := unitofwork.NewAllocationUnitOfWork(db, imp)
 
@@ -69,13 +73,13 @@ func TestUnitOfWork(t *testing.T) {
 
 		err := ensureTransactionWasCommited()
 		assert.NoError(t, err)
-
-		t.Cleanup(func() {
-			helpers.CleanUpRepositoryHelper(db)
-		})
 	})
 
 	t.Run("run a transaction that results in rollback", func(t *testing.T) {
+		t.Cleanup(func() {
+			helpers.CleanUpRepositoryHelper(db)
+		})
+
 		ctx := context.Background()
 		uow := unitofwork.NewAllocationUnitOfWork(db, imp)
 
@@ -109,15 +113,14 @@ func TestUnitOfWork(t *testing.T) {
 
 		err := ensureTransactionWasRolledBack()
 		assert.ErrorIs(t, err, domain.ErrProductNotFound)
-
-		t.Cleanup(func() {
-			helpers.CleanUpRepositoryHelper(db)
-		})
 	})
 
 	t.Run("similate concorrent updates to version not allowed",
 		func(t *testing.T) {
-			helpers.CleanUpRepositoryHelper(db)
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
+
 			ctx := context.Background()
 			uow := unitofwork.NewAllocationUnitOfWork(db, imp)
 
@@ -179,16 +182,16 @@ func TestUnitOfWork(t *testing.T) {
 
 				return nil
 			})
-
-			t.Cleanup(func() {
-				helpers.CleanUpRepositoryHelper(db)
-			})
 		})
 }
 
 func TestRepository(t *testing.T) {
 	t.Run("add a product",
 		func(t *testing.T) {
+			t.Cleanup(func() {
+				helpers.CleanUpRepositoryHelper(db)
+			})
+
 			ctx := context.Background()
 
 			tx := db.WithContext(ctx).Begin()
@@ -206,11 +209,6 @@ func TestRepository(t *testing.T) {
 			assert.NoError(t, err)
 
 			assert.Equal(t, product, resultedProduct)
-
-			t.Cleanup(func() {
-				tx.WithContext(ctx).Commit()
-				helpers.CleanUpRepositoryHelper(db)
-			})
 		})
 
 	t.Run("get a product with batches and allocations",

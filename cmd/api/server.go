@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
-	"net/http"
 
 	"cosmic-go/internal/infra/database"
 	"cosmic-go/internal/infra/messagepublisher"
@@ -22,10 +20,8 @@ func main() {
 
 	redisClient := messagepublisher.InitializeRedis()
 
-	router := server.InitializeServer(ctx, db, redisClient)
+	httpServer := server.NewServer()
+	httpServer.InitializeDependencies(ctx, db, redisClient)
 
-	err := http.ListenAndServe(":8080", router)
-	if err != nil {
-		log.Fatalln("Server failed to start:", err)
-	}
+	go httpServer.Run()
 }

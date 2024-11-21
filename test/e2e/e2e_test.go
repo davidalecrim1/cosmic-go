@@ -29,7 +29,6 @@ import (
 var (
 	db          *gorm.DB
 	ts          *httptest.Server
-	router      *http.ServeMux
 	redisClient *redis.Client
 )
 
@@ -45,8 +44,9 @@ func TestMain(m *testing.M) {
 
 	redisClient = messagepublisher.InitializeRedis()
 
-	router = server.InitializeServer(ctx, db, redisClient)
-	ts = httptest.NewServer(router)
+	s := server.NewServer()
+	s.InitializeDependencies(ctx, db, redisClient)
+	ts = httptest.NewServer(s.Router)
 	defer ts.Close()
 
 	code := m.Run()
@@ -387,7 +387,7 @@ func allocateRequestPostWrapper(
 	assert.NoError(t, err)
 
 	resp, err := http.Post(
-		ts.URL+"/allocate",
+		ts.URL+"/products/allocations/allocate",
 		"application/json",
 		bytes.NewBuffer(body),
 	)
@@ -410,7 +410,7 @@ func deallocateRequestPostWrapper(
 	body, err := json.Marshal(requestBody)
 	assert.NoError(t, err)
 
-	resp, err := http.Post(ts.URL+"/deallocate",
+	resp, err := http.Post(ts.URL+"/products/allocations/deallocate",
 		"application/json",
 		bytes.NewBuffer(body),
 	)
@@ -430,7 +430,7 @@ func allocationsRequestGetWrapper(
 	ts *httptest.Server,
 	orderID string,
 ) (respBody []byte) {
-	resp, err := http.Get(ts.URL + "/allocations/" + orderID)
+	resp, err := http.Get(ts.URL + "/products/allocations/" + orderID)
 	assert.NoError(t, err)
 	defer resp.Body.Close()
 

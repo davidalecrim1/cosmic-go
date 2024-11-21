@@ -5,9 +5,11 @@ unit-test:
 	go test -coverprofile=unit.out ./...
 
 integration-test:
+	$(MAKE) run-dependencies
 	go test ./test/integration -tags integration -coverpkg=./internal/... -coverprofile=integration.out 
 
 e2e-test:
+	$(MAKE) run-dependencies
 	go test -tags e2e ./... -coverpkg=./internal/... -coverprofile=e2e.out
 
 coverage:
@@ -17,9 +19,5 @@ coverage:
 run:
 	go run ./cmd/api/server.go
 
-run-db:
-	docker-compose up postgres-db pgadmin-ui -d
-
-restart-db:
-	docker-compose down postgres-db pgadmin-ui
-	make run_db
+run-dependencies:
+	docker-compose up postgres-db pgadmin-ui redis -d
