@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"sync"
 	"testing"
@@ -19,6 +20,9 @@ import (
 	"cosmic-go/test/helpers"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/testcontainers/testcontainers-go"
+	testcontainerPostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"gorm.io/gorm"
 )
 
@@ -28,11 +32,47 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	db = database.InitializeDatabase()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dbContainer := createTestDatabase(ctx)
+	defer func() {
+		err := dbContainer.Terminate(ctx)
+		if err != nil {
+			log.Fatalf("failed to terminate container: %v", err)
+		}
+	}()
+	conn, err := dbContainer.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		log.Fatalf("failed to retrieve the connection string: %v", err)
+	}
+
+	db = database.NewDatabase(
+		database.WithConnectionString(conn),
+	)
+
 	imp = messagepublisher.NewInternalMessagePublisher()
 
 	code := m.Run()
 	os.Exit(code)
+}
+
+func createTestDatabase(ctx context.Context) (container *testcontainerPostgres.PostgresContainer) {
+	pgContainer, err := testcontainerPostgres.Run(
+		ctx,
+		"docker.io/postgres:16.4-alpine3.20",
+		testcontainerPostgres.WithDatabase("cosmic"),
+		testcontainerPostgres.WithUsername("admin"),
+		testcontainerPostgres.WithPassword("password"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(5*time.Second)),
+	)
+	if err != nil {
+		log.Fatalf("failed to create database for tests: %v", err)
+	}
+	return pgContainer
 }
 
 func TestUnitOfWork(t *testing.T) {
@@ -188,10 +228,6 @@ func TestUnitOfWork(t *testing.T) {
 func TestRepository(t *testing.T) {
 	t.Run("add a product",
 		func(t *testing.T) {
-			t.Cleanup(func() {
-				helpers.CleanUpRepositoryHelper(db)
-			})
-
 			ctx := context.Background()
 
 			tx := db.WithContext(ctx).Begin()
@@ -209,6 +245,11 @@ func TestRepository(t *testing.T) {
 			assert.NoError(t, err)
 
 			assert.Equal(t, product, resultedProduct)
+
+			t.Cleanup(func() {
+				tx.WithContext(ctx).Commit()
+				helpers.CleanUpRepositoryHelper(db)
+			})
 		})
 
 	t.Run("get a product with batches and allocations",

@@ -7,9 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +25,10 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
+	"github.com/testcontainers/testcontainers-go"
+	testcontainerRedis "github.com/testcontainers/testcontainers-go/modules/redis"
+	"github.com/testcontainers/testcontainers-go/wait"
+
 	"gorm.io/gorm"
 )
 
@@ -33,7 +39,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	db = database.InitializeDatabase()
+	db = database.NewDatabase()
 	defer func() {
 		sqlDB, _ := db.DB()
 		sqlDB.Close()
@@ -42,7 +48,26 @@ func TestMain(m *testing.M) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	redisClient = messagepublisher.InitializeRedis()
+	rdContainer := createTestRedis(ctx)
+	defer func() {
+		err := rdContainer.Terminate(ctx)
+		if err != nil {
+			log.Fatalf("failed to terminate container: %v", err)
+		}
+	}()
+
+	host, err := rdContainer.Host(ctx)
+	if err != nil {
+		log.Fatalf("failed to retrieve the host string: %v", err)
+	}
+
+	port, err := rdContainer.MappedPort(ctx, "6379/tcp")
+	if err != nil {
+		log.Fatalf("failed to retrieve the port string: %v", err)
+	}
+
+	conn := strings.Join([]string{host, port.Port()}, ":")
+	redisClient = messagepublisher.InitializeRedis(conn)
 
 	s := server.NewServer()
 	s.InitializeDependencies(ctx, db, redisClient)
@@ -51,6 +76,23 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 	os.Exit(code)
+}
+
+func createTestRedis(ctx context.Context) (container *testcontainerRedis.RedisContainer) {
+	rdContainer, err := testcontainerRedis.Run(
+		ctx,
+		"docker.io/redis:7.4",
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("Ready to accept connections tcp").
+				WithOccurrence(1).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		log.Fatalf("failed to create redis for tests: %v", err)
+	}
+
+	return rdContainer
 }
 
 func TestE2E_Allocation(t *testing.T) {
