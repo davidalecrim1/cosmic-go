@@ -8,9 +8,7 @@ import (
 	"cosmic-go/internal/application"
 	"cosmic-go/internal/domain"
 	"cosmic-go/internal/handler"
-
-	messagepublisher "cosmic-go/internal/infra/messagepublisher"
-	unitofwork "cosmic-go/internal/uow"
+	"cosmic-go/internal/infra/messagepublisher"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -31,7 +29,7 @@ func NewServer() *Server {
 func (s *Server) InitializeDependencies(ctx context.Context, db *gorm.DB, redisClient *redis.Client) {
 	imp := messagepublisher.NewInternalMessagePublisher()
 
-	uow := unitofwork.NewAllocationUnitOfWork(db, imp)
+	uow := application.NewAllocationUnitOfWork(db, imp)
 	svc := application.NewAllocationService(uow)
 	hnr := handler.NewAllocationHandler(imp)
 	hnrv := handler.NewAllocationViewHandler(db)

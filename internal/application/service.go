@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"cosmic-go/internal/domain"
-	unitofwork "cosmic-go/internal/uow"
 )
 
 var (
@@ -15,7 +14,7 @@ var (
 )
 
 type UoW interface {
-	Transact(ctx context.Context, txFunc func(adapters unitofwork.Adapters) error) error
+	Transact(ctx context.Context, txFunc func(adapters Adapters) error) error
 	AddEvents(events []domain.Event)
 }
 
@@ -34,7 +33,7 @@ func (s *AllocationService) Allocate(c domain.Command) error {
 	}
 
 	ctx := context.Background()
-	return s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
+	return s.uow.Transact(ctx, func(adapters Adapters) error {
 		_, err := s.processAllocation(ctx, line, adapters)
 		return err
 	})
@@ -64,7 +63,7 @@ func (s *AllocationService) mapCommandToOrderLine(c domain.Command) (*domain.Ord
 	}
 }
 
-func (s *AllocationService) processAllocation(ctx context.Context, line *domain.OrderLine, adapters unitofwork.Adapters) (string, error) {
+func (s *AllocationService) processAllocation(ctx context.Context, line *domain.OrderLine, adapters Adapters) (string, error) {
 	var updatedBatchRef string
 
 	p, err := adapters.Repository.GetProduct(ctx, line.SKU)
@@ -98,7 +97,7 @@ func (s *AllocationService) AddProduct(c domain.Command) error {
 		return err
 	}
 
-	return s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
+	return s.uow.Transact(ctx, func(adapters Adapters) error {
 		return adapters.Repository.AddProduct(ctx, p)
 	})
 }
@@ -119,12 +118,12 @@ func (s *AllocationService) Deallocate(c domain.Command) error {
 	}
 
 	ctx := context.Background()
-	return s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
+	return s.uow.Transact(ctx, func(adapters Adapters) error {
 		return s.processDeallocation(ctx, domain.OrderID(line.OrderId), line.SKU, adapters)
 	})
 }
 
-func (s *AllocationService) processDeallocation(ctx context.Context, orderid domain.OrderID, sku string, adapters unitofwork.Adapters) error {
+func (s *AllocationService) processDeallocation(ctx context.Context, orderid domain.OrderID, sku string, adapters Adapters) error {
 	p, err := adapters.Repository.GetProduct(ctx, sku)
 	if err != nil {
 		return ErrProductNotFound
@@ -152,7 +151,7 @@ func (s *AllocationService) Reallocate(c domain.Command) error {
 
 func (s *AllocationService) processRealocation(line *domain.OrderLine) error {
 	ctx := context.Background()
-	return s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
+	return s.uow.Transact(ctx, func(adapters Adapters) error {
 		p, err := adapters.Repository.GetProduct(ctx, line.SKU)
 		if err != nil {
 			return err
@@ -175,7 +174,7 @@ func (s *AllocationService) ChangeBatchQuantity(c domain.Command) error {
 	}
 
 	ctx := context.Background()
-	err = s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
+	err = s.uow.Transact(ctx, func(adapters Adapters) error {
 		product, err := adapters.Repository.GetProductByBatchReference(ctx, event.BatchReference)
 		if err != nil {
 			return err
@@ -213,7 +212,7 @@ func (s *AllocationService) AllocationIsNeeded(event domain.Event) error {
 	}
 
 	ctx := context.Background()
-	return s.uow.Transact(ctx, func(adapters unitofwork.Adapters) error {
+	return s.uow.Transact(ctx, func(adapters Adapters) error {
 		_, err := s.processAllocation(ctx, line, adapters)
 		return err
 	})

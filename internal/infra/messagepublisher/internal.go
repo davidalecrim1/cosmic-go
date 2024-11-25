@@ -3,13 +3,13 @@ package messagepublisher
 import (
 	"sync"
 
+	"cosmic-go/internal/application"
 	"cosmic-go/internal/domain"
-	unitofwork "cosmic-go/internal/uow"
 )
 
 type InternalMessagePublisher struct {
-	eventHandlers  map[string][]unitofwork.EventHandler
-	commandHandler map[string]unitofwork.CommandHandler
+	eventHandlers  map[string][]application.EventHandler
+	commandHandler map[string]application.CommandHandler
 }
 
 func NewInternalMessagePublisher() *InternalMessagePublisher {
@@ -18,10 +18,10 @@ func NewInternalMessagePublisher() *InternalMessagePublisher {
 
 func (imp *InternalMessagePublisher) RegisterEventHandler(
 	event domain.Event,
-	handler unitofwork.EventHandler,
+	handler application.EventHandler,
 ) {
 	if imp.eventHandlers == nil {
-		imp.eventHandlers = make(map[string][]unitofwork.EventHandler)
+		imp.eventHandlers = make(map[string][]application.EventHandler)
 	}
 
 	imp.eventHandlers[event.GetEventName()] = append(imp.eventHandlers[event.GetEventName()], handler)
@@ -51,10 +51,10 @@ func (imp *InternalMessagePublisher) PublishEvent(event domain.Event) <-chan err
 
 func (imp *InternalMessagePublisher) RegisterCommandHandler(
 	command domain.Command,
-	handler unitofwork.CommandHandler,
+	handler application.CommandHandler,
 ) {
 	if imp.commandHandler == nil {
-		imp.commandHandler = make(map[string]unitofwork.CommandHandler)
+		imp.commandHandler = make(map[string]application.CommandHandler)
 	}
 
 	imp.commandHandler[command.GetCommandName()] = handler

@@ -26,3 +26,5 @@ go.work.sum
 
 TODO.md
 *coverage.out
+
+.DS_Store

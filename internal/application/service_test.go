@@ -3,12 +3,13 @@ package application
 import (
 	"context"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
 	"cosmic-go/internal/domain"
-	messagepublisher "cosmic-go/internal/infra/messagepublisher"
-	unitofwork "cosmic-go/internal/uow"
+
+	// messagepublisher "cosmic-go/internal/infra/messagepublisher"
 	utils "cosmic-go/pkg/utils"
 
 	"github.com/stretchr/testify/assert"
@@ -22,7 +23,7 @@ func TestMain(m *testing.M) {
 func TestService(t *testing.T) {
 	t.Run("allocate batch",
 		func(t *testing.T) {
-			imp := messagepublisher.NewInternalMessagePublisher()
+			imp := NewFakeInternalMessagePublisher()
 
 			repo := NewFakeRepository()
 			uow := NewFakeUnitOfWork(repo, imp)
@@ -50,7 +51,7 @@ func TestService(t *testing.T) {
 
 	t.Run("error for invalid sku on allocate",
 		func(t *testing.T) {
-			imp := messagepublisher.NewInternalMessagePublisher()
+			imp := NewFakeInternalMessagePublisher()
 
 			repo := NewFakeRepository()
 			uow := NewFakeUnitOfWork(repo, imp)
@@ -81,7 +82,7 @@ func TestService(t *testing.T) {
 
 	t.Run("add product",
 		func(t *testing.T) {
-			imp := messagepublisher.NewInternalMessagePublisher()
+			imp := NewFakeInternalMessagePublisher()
 
 			repo := NewFakeRepository()
 			uow := NewFakeUnitOfWork(repo, imp)
@@ -112,7 +113,7 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			imp := messagepublisher.NewInternalMessagePublisher()
+			imp := NewFakeInternalMessagePublisher()
 
 			repo := NewFakeRepository()
 			uow := NewFakeUnitOfWork(repo, imp)
@@ -163,7 +164,7 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			imp := messagepublisher.NewInternalMessagePublisher()
+			imp := NewFakeInternalMessagePublisher()
 
 			repo := NewFakeRepository()
 			uow := NewFakeUnitOfWork(repo, imp)
@@ -214,7 +215,7 @@ func TestService(t *testing.T) {
 		func(t *testing.T) {
 			ctx := context.Background()
 
-			imp := messagepublisher.NewInternalMessagePublisher()
+			imp := NewFakeInternalMessagePublisher()
 
 			repo := NewFakeRepository()
 			uow := NewFakeUnitOfWork(repo, imp)
@@ -266,7 +267,7 @@ func TestService(t *testing.T) {
 
 	t.Run("reallocate allocated orderline",
 		func(t *testing.T) {
-			imp := messagepublisher.NewInternalMessagePublisher()
+			imp := NewFakeInternalMessagePublisher()
 
 			repo := NewFakeRepository()
 			uow := NewFakeUnitOfWork(repo, imp)
@@ -319,7 +320,7 @@ func TestService(t *testing.T) {
 	t.Run("out of stock creates an command for external services",
 		func(t *testing.T) {
 			eventHandler := &MockEventHandler{}
-			imp := messagepublisher.NewInternalMessagePublisher()
+			imp := NewFakeInternalMessagePublisher()
 
 			repo := NewFakeRepository()
 			uow := NewFakeUnitOfWork(repo, imp)
@@ -351,7 +352,7 @@ func TestService(t *testing.T) {
 	t.Run("command ChangeBatchQuantity changes available quantity of a batch",
 		func(t *testing.T) {
 			repo := NewFakeRepository()
-			imp := messagepublisher.NewInternalMessagePublisher()
+			imp := NewFakeInternalMessagePublisher()
 			uow := NewFakeUnitOfWork(repo, imp)
 			svc := NewAllocationService(uow)
 
@@ -397,7 +398,7 @@ func TestService(t *testing.T) {
 			ctx := context.Background()
 
 			repo := NewFakeRepository()
-			imp := messagepublisher.NewInternalMessagePublisher()
+			imp := NewFakeInternalMessagePublisher()
 			uow := NewFakeUnitOfWork(repo, imp)
 			svc := NewAllocationService(uow)
 
@@ -526,19 +527,19 @@ func (r *FakeRepository) GetProductByBatchReference(_ context.Context, batchRefe
 }
 
 type FakeUoW struct {
-	adapters unitofwork.Adapters
+	adapters Adapters
 	events   []domain.Event
-	imp      unitofwork.MessagePublisher
+	imp      MessagePublisher
 }
 
-func NewFakeUnitOfWork(repo unitofwork.Repository, imp unitofwork.MessagePublisher) *FakeUoW {
+func NewFakeUnitOfWork(repo Repository, imp MessagePublisher) *FakeUoW {
 	return &FakeUoW{
-		adapters: unitofwork.Adapters{Repository: repo},
+		adapters: Adapters{Repository: repo},
 		imp:      imp,
 	}
 }
 
-func (u *FakeUoW) Transact(ctx context.Context, txFunc func(_ unitofwork.Adapters) error) error {
+func (u *FakeUoW) Transact(ctx context.Context, txFunc func(_ Adapters) error) error {
 	err := txFunc(u.adapters)
 	u.dispatchEvents()
 	return err
@@ -565,4 +566,70 @@ type MockEventHandler struct {
 func (m *MockEventHandler) Handle(event domain.Event) error {
 	m.ReceivedEvents = append(m.ReceivedEvents, event)
 	return nil
+}
+
+type FakeInternalMessagePublisher struct {
+	eventHandlers  map[string][]EventHandler
+	commandHandler map[string]CommandHandler
+}
+
+func NewFakeInternalMessagePublisher() *FakeInternalMessagePublisher {
+	return &FakeInternalMessagePublisher{}
+}
+
+func (imp *FakeInternalMessagePublisher) RegisterEventHandler(
+	event domain.Event,
+	handler EventHandler,
+) {
+	if imp.eventHandlers == nil {
+		imp.eventHandlers = make(map[string][]EventHandler)
+	}
+
+	imp.eventHandlers[event.GetEventName()] = append(imp.eventHandlers[event.GetEventName()], handler)
+}
+
+func (imp *FakeInternalMessagePublisher) PublishEvent(event domain.Event) <-chan error {
+	if eventHandlers, ok := imp.eventHandlers[event.GetEventName()]; ok {
+		errChan := make(chan error, len(eventHandlers))
+
+		var wg sync.WaitGroup
+		for _, handler := range eventHandlers {
+			wg.Add(1)
+			go func(e domain.Event) {
+				defer wg.Done()
+				if err := handler(event); err != nil {
+					errChan <- err
+				}
+			}(event)
+		}
+
+		wg.Wait()
+		close(errChan)
+		return errChan
+	}
+	return nil
+}
+
+func (imp *FakeInternalMessagePublisher) RegisterCommandHandler(
+	command domain.Command,
+	handler CommandHandler,
+) {
+	if imp.commandHandler == nil {
+		imp.commandHandler = make(map[string]CommandHandler)
+	}
+
+	imp.commandHandler[command.GetCommandName()] = handler
+}
+
+func (imp *FakeInternalMessagePublisher) PublishCommand(command domain.Command) <-chan error {
+	errChan := make(chan error, 1)
+
+	if handler, ok := imp.commandHandler[command.GetCommandName()]; ok {
+		if err := handler(command); err != nil {
+			errChan <- err
+		}
+	}
+
+	close(errChan)
+	return errChan
 }
