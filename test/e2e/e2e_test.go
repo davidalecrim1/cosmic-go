@@ -26,6 +26,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/testcontainers/testcontainers-go"
+	testcontainerPostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+
 	testcontainerRedis "github.com/testcontainers/testcontainers-go/modules/redis"
 	"github.com/testcontainers/testcontainers-go/wait"
 
@@ -39,14 +41,24 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	db = database.NewDatabase()
-	defer func() {
-		sqlDB, _ := db.DB()
-		sqlDB.Close()
-	}()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	dbContainer := createTestDatabase(ctx)
+	defer func() {
+		err := dbContainer.Terminate(ctx)
+		if err != nil {
+			log.Fatalf("failed to terminate container: %v", err)
+		}
+	}()
+	conn, err := dbContainer.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		log.Fatalf("failed to retrieve the connection string: %v", err)
+	}
+
+	db = database.NewDatabase(
+		database.WithConnectionString(conn),
+	)
 
 	rdContainer := createTestRedis(ctx)
 	defer func() {
@@ -66,7 +78,7 @@ func TestMain(m *testing.M) {
 		log.Fatalf("failed to retrieve the port string: %v", err)
 	}
 
-	conn := strings.Join([]string{host, port.Port()}, ":")
+	conn = strings.Join([]string{host, port.Port()}, ":")
 	redisClient = messagepublisher.InitializeRedis(conn)
 
 	s := server.NewServer()
@@ -93,6 +105,24 @@ func createTestRedis(ctx context.Context) (container *testcontainerRedis.RedisCo
 	}
 
 	return rdContainer
+}
+
+func createTestDatabase(ctx context.Context) (container *testcontainerPostgres.PostgresContainer) {
+	pgContainer, err := testcontainerPostgres.Run(
+		ctx,
+		"docker.io/postgres:16.4-alpine3.20",
+		testcontainerPostgres.WithDatabase("cosmic"),
+		testcontainerPostgres.WithUsername("admin"),
+		testcontainerPostgres.WithPassword("password"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(5*time.Second)),
+	)
+	if err != nil {
+		log.Fatalf("failed to create database for tests: %v", err)
+	}
+	return pgContainer
 }
 
 func TestE2E_Allocation(t *testing.T) {
